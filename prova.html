@@ -1,0 +1,1364 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Simulatore di analisi logica</title>
+<meta name="author" content="Massimo Bellagente">
+<meta name="description" content="Simulatore di analisi logica: guida l'alunno passo per passo, riconosce il tipo di errore e propone un'unità di compensazione mirata. Ideato da Massimo Bellagente.">
+<!-- © 2026 Massimo Bellagente · www.creareconoscenza.com · Licenza CC BY-NC-ND 4.0 -->
+<!--
+  BOZZETTO della nuova interfaccia del Simulatore (M. Bellagente).
+  Schema: Procedura | Dialogo | Legenda + fascia "Unità di Compensazione".
+  Principi: Miller (poche zone di attenzione), figura-sfondo (Gestalt),
+  carico cognitivo (Sweller: niente attenzione divisa, le sigle stanno sulla frase),
+  cancellazione visiva (van Dijk: ciò che è risolto passa sullo sfondo).
+  File unico, nessuna dipendenza esterna.
+-->
+<style>
+  :root {
+    --testo: #1d2330; --tenue: #6b7383; --sfondo-pag: #f3f4f6; --bordo: #d5d9e0;
+    --blu: #1f3f7a; --giallo: #fff4b8; --giallo-forte: #f2c200;
+    --verde: #2e7d32; --verde-chiaro: #e7f4e8; --rosso: #b3261e; --rosso-chiaro: #fdecea;
+    --arancio: #b35c00; --arancio-chiaro: #fff1df; --risolto: #a3abb9;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; }
+  body {
+    background: var(--sfondo-pag); color: var(--testo);
+    font-family: "Segoe UI", Arial, sans-serif; font-size: 16px; line-height: 1.45;
+    display: flex; flex-direction: column; min-height: 100vh;
+  }
+  button { font: inherit; cursor: pointer; border-radius: 6px; border: 1px solid var(--bordo); background: #fff; padding: 6px 12px; }
+  button:hover:not(:disabled) { background: #f0f3f8; }
+  button:disabled { opacity: .4; cursor: not-allowed; }
+  .primario { background: var(--blu); color: #fff; border-color: var(--blu); font-weight: 600; }
+  .primario:hover:not(:disabled) { background: #173064; }
+  .verde { background: var(--verde); color: #fff; border-color: var(--verde); font-weight: 600; }
+  .nascosto { display: none !important; }
+
+  /* ---------- Intestazione sottile ---------- */
+  header {
+    background: #fff; border-bottom: 1px solid var(--bordo); padding: 8px 16px;
+    display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
+  }
+  header .nome { font-weight: 700; color: var(--blu); font-size: 1.05em; }
+  header .frase-n { color: var(--tenue); font-size: .9em; }
+  header .spazio { flex: 1; }
+  header button { padding: 4px 10px; font-size: .9em; }
+  .modo { display: inline-flex; border: 1px solid var(--bordo); border-radius: 7px; overflow: hidden; margin-left: 8px; }
+  .modo button { border: none; border-radius: 0; color: var(--tenue); }
+  .modo button.attivo { background: var(--blu); color: #fff; }
+
+  /* ---------- Area principale ---------- */
+  main { flex: 1; display: grid; grid-template-columns: 250px minmax(0, 1fr) 240px; gap: 12px; padding: 12px 16px 8px; }
+  main.proc-chiusa { grid-template-columns: 44px minmax(0, 1fr) 240px; }
+  main.leg-chiusa { grid-template-columns: 250px minmax(0, 1fr) 44px; }
+  main.proc-chiusa.leg-chiusa { grid-template-columns: 44px minmax(0, 1fr) 44px; }
+  @media (max-width: 780px) {
+    main, main.proc-chiusa, main.leg-chiusa, main.proc-chiusa.leg-chiusa { grid-template-columns: 1fr; }
+  }
+  .zona { background: #fff; border: 1px solid var(--bordo); border-radius: 10px; padding: 12px; position: relative; }
+  .zona h2 {
+    margin: 0 0 8px; font-size: .78em; letter-spacing: .08em; text-transform: uppercase; color: var(--tenue);
+    display: flex; justify-content: space-between; align-items: center;
+  }
+  .zona h2 button { border: none; background: none; padding: 0 4px; color: var(--tenue); font-size: 1.2em; }
+  .striscia { display: none; writing-mode: vertical-rl; transform: rotate(180deg); color: var(--tenue);
+    font-size: .8em; letter-spacing: .1em; text-transform: uppercase; cursor: pointer; padding: 8px 0; width: 100%; text-align: center; }
+  .zona.chiusa { padding: 6px 2px; }
+  .zona.chiusa > *:not(.striscia) { display: none; }
+  .zona.chiusa .striscia { display: block; }
+
+  /* ---------- Procedura ---------- */
+  .passo { border-left: 4px solid var(--bordo); padding: 5px 8px; margin: 4px 0; border-radius: 0 6px 6px 0; color: var(--tenue); font-size: .92em; cursor: pointer; }
+  .passo b { font-weight: 600; }
+  .passo .dett { display: none; font-size: .92em; margin-top: 3px; color: var(--testo); }
+  .passo.attivo { background: var(--giallo); border-left-color: var(--giallo-forte); color: var(--testo); }
+  .passo.attivo .dett, .passo.aperto .dett { display: block; }
+  .passo.fatto { color: var(--verde); border-left-color: var(--verde); }
+  .passo.fatto b::after { content: " ✓"; }
+
+  /* ---------- Dialogo ---------- */
+  .dialogo { display: flex; flex-direction: column; }
+  .consegna { font-size: 1.02em; margin-bottom: 4px; }
+  .consegna .passo-n { color: var(--tenue); font-size: .8em; text-transform: uppercase; letter-spacing: .06em; display: block; }
+  .frase-box {
+    margin: 14px 0 10px; padding: 26px 10px 18px; border: 1px dashed var(--bordo); border-radius: 10px;
+    text-align: center; line-height: 1; user-select: none; background: #fffef8;
+  }
+  .riga { display: inline-flex; flex-wrap: wrap; justify-content: center; align-items: flex-end; row-gap: 22px; }
+  .tok { display: inline-flex; flex-direction: column; align-items: center; cursor: pointer; padding: 0 2px; }
+  .tok .sigla { font-size: .72rem; font-weight: 700; color: var(--blu); height: 1.1rem; letter-spacing: .03em; white-space: nowrap; }
+  .tok .parola { font-size: 1.55rem; padding: 4px 5px 6px; border-radius: 6px; border-bottom: 3px solid transparent; transition: color .3s, background .15s; }
+  .tok:hover .parola { background: #f2eed8; }
+  .tok.sel .parola { background: var(--giallo); outline: 2px solid var(--giallo-forte); }
+  .tok.sottolineato .parola { border-bottom-color: var(--blu); }
+  .tok.risolto .parola { color: var(--risolto); }
+  .tok.risolto .sigla { color: #7f8aa0; }
+  .gap { display: inline-flex; align-items: flex-end; width: 18px; justify-content: center; cursor: pointer; padding-bottom: 8px; }
+  .gap span { font-size: 1.6rem; color: transparent; font-weight: 700; }
+  .gap:hover span { color: #c9ced8; }
+  .gap.barra span { color: var(--rosso); }
+  .azioni { display: flex; flex-wrap: wrap; gap: 8px; justify-content: center; margin: 6px 0; }
+  .etichetta-scelta { width: 100%; text-align: center; font-size: .85em; color: var(--tenue); margin-top: 4px; }
+  .chip { border-radius: 999px; padding: 6px 14px; font-weight: 600; border: 2px solid var(--blu); color: var(--blu); background: #fff; }
+  .chip:hover:not(:disabled) { background: #eef2fa; }
+  .chip.domanda { border-color: #8a6d00; color: #6b5400; }
+  .suggerimento { font-size: .88em; color: var(--tenue); text-align: center; min-height: 1.3em; }
+  .colonna { margin: 8px auto; max-width: 520px; font-family: Georgia, serif; border: 1px dashed var(--blu); border-radius: 8px; padding: 8px 14px; }
+  .colonna div { padding: 4px 0; border-bottom: 1px dotted #d9dde5; }
+  .colonna div:last-child { border-bottom: none; }
+  .check { display: block; margin: 5px auto; max-width: 520px; cursor: pointer; }
+  .copertura { position: absolute; inset: 0; background: rgba(255,255,255,.97); border-radius: 10px; display: flex; align-items: center; justify-content: center; text-align: center; z-index: 4; }
+  .copertura .box h3 { margin: 0 0 6px; color: var(--blu); }
+  .copertura .box p { margin: 0 0 14px; color: var(--tenue); }
+
+  /* ---------- Legenda ---------- */
+  .sigla-riga { display: flex; gap: 8px; padding: 3px 0; font-size: .92em; }
+  .sigla-riga b { color: var(--blu); min-width: 64px; }
+  .legenda-altre { margin-top: 8px; font-size: .88em; }
+  .legenda-altre summary { cursor: pointer; color: var(--tenue); }
+  .partic { margin-top: 10px; padding: 8px; background: #f6f7fa; border-radius: 6px; font-size: .88em; }
+  .partic b { display: block; color: var(--tenue); font-size: .8em; text-transform: uppercase; letter-spacing: .06em; margin-bottom: 3px; }
+
+  /* ---------- Unità di Compensazione ---------- */
+  .fascia { margin: 0 16px 12px; background: #fff; border: 1px solid var(--bordo); border-radius: 10px; padding: 8px 14px; transition: all .25s; }
+  .fascia .titolo-fascia { font-size: .78em; letter-spacing: .08em; text-transform: uppercase; color: var(--tenue); }
+  .fascia .contenuto { display: none; }
+  .fascia.aperta { padding: 12px 16px; }
+  .fascia.aperta .contenuto { display: block; margin-top: 6px; }
+  .fascia.errore { border-color: var(--rosso); background: var(--rosso-chiaro); }
+  .fascia.avviso { border-color: var(--arancio); background: var(--arancio-chiaro); }
+  .fascia.ok { border-color: var(--verde); background: var(--verde-chiaro); }
+  .fascia h3 { margin: 0 0 4px; font-size: 1.05em; }
+  .fascia .esempio { background: rgba(255,255,255,.7); border-left: 4px solid var(--blu); padding: 6px 10px; margin: 8px 0; border-radius: 4px; }
+  .fascia .bottoni { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 8px; }
+  .fascia .opz { display: block; margin: 5px 0; text-align: left; width: 100%; max-width: 520px; }
+  .fascia .esito { font-weight: 600; margin-top: 6px; }
+
+  /* ---------- Visita guidata ---------- */
+  .velo-tour { position: fixed; inset: 0; background: rgba(20,28,45,.45); z-index: 20; }
+  .evidenzia { position: relative; z-index: 21; box-shadow: 0 0 0 4px var(--giallo-forte), 0 0 0 9999px rgba(20,28,45,.45); }
+  .fumetto { position: fixed; z-index: 22; background: #fff; border-radius: 10px; padding: 14px 16px; max-width: 320px; box-shadow: 0 8px 24px rgba(0,0,0,.25); }
+  .fumetto p { margin: 0 0 10px; }
+  .fumetto .conta { font-size: .8em; color: var(--tenue); }
+
+  /* ---------- Opzioni per l'insegnante: livello e aiuti ---------- */
+  .opzioni { background: #fff; border-bottom: 1px solid var(--bordo); padding: 10px 16px; display: flex; flex-wrap: wrap; gap: 8px 22px; align-items: center; font-size: .92em; }
+  .opzioni .gruppo-opz { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 14px; }
+  .opzioni .titolo-opz { font-size: .8em; letter-spacing: .08em; text-transform: uppercase; color: var(--tenue); }
+  .opzioni label { cursor: pointer; white-space: nowrap; }
+  .opzioni .modo { margin-left: 0; }
+  .opzioni .modo button { padding: 4px 10px; }
+  .chip.con-guida { border-radius: 10px; display: inline-flex; flex-direction: column; align-items: center; line-height: 1.25; }
+  .chip.con-guida small { font-weight: 400; font-size: .8em; color: var(--testo); }
+  #btnAscolta { margin-top: 16px; font-size: .9rem; line-height: 1.3; }
+
+  /* ---------- Scatola nera ---------- */
+  .scatola { position: fixed; inset: 0; background: rgba(20,28,45,.5); z-index: 30; display: flex; align-items: flex-start; justify-content: center; padding: 24px 12px; overflow: auto; }
+  .scatola .dentro { background: #fff; border-radius: 10px; padding: 18px 22px; max-width: 900px; width: 100%; font-size: .92rem; letter-spacing: 0; }
+  .scatola h3 { margin: 0 0 4px; color: var(--blu); }
+  .scatola h4 { margin: 16px 0 6px; font-size: .8em; letter-spacing: .08em; text-transform: uppercase; color: var(--tenue); }
+  .scatola table { border-collapse: collapse; width: 100%; }
+  .scatola th, .scatola td { border: 1px solid var(--bordo); padding: 4px 8px; text-align: left; vertical-align: top; }
+  .scatola th { background: #f6f7fa; font-weight: 600; }
+  .scatola summary { cursor: pointer; color: var(--tenue); margin: 10px 0 6px; }
+  .nota-sn { color: var(--tenue); margin: 0; }
+  .bottoni-sn { display: flex; gap: 8px; flex-wrap: wrap; justify-content: flex-end; margin-top: 14px; }
+  /* ---------- Guida per l'insegnante (?guida=1): la schermata vera, con i comandi numerati ---------- */
+  .num { display: inline-flex; flex: none; width: 1.55em; height: 1.55em; border-radius: 50%; background: var(--rosso); color: #fff;
+    font: 700 .8rem Arial, sans-serif; align-items: center; justify-content: center; margin-right: 5px; letter-spacing: 0; vertical-align: middle; text-indent: 0; }
+  body.guida { display: block; min-height: 0; width: 1040px; margin: 0 auto; font-size: 14px; }   /* larghezza fissa: uguale a schermo e su un foglio A4 orizzontale */
+  body.guida main { grid-template-columns: 215px minmax(0, 1fr) 215px !important; }
+  body.guida .tok .parola { font-size: 1.3rem; }
+  body.guida .frase-box { margin: 8px 0; padding: 16px 8px 10px; }
+  body.guida header, body.guida .opzioni, body.guida main, body.guida .fascia { pointer-events: none; }
+  body.guida .zona h2 { justify-content: flex-start; }
+  body.guida .zona h2 button { margin-left: auto; }
+  .aiuto-box { position: relative; display: inline-block; }
+  .aiuto-menu { position: absolute; right: 0; top: calc(100% + 6px); z-index: 15; background: #fff; border: 1px solid var(--bordo); border-radius: 10px;
+    box-shadow: 0 8px 24px rgba(0,0,0,.18); padding: 6px; display: flex; flex-direction: column; gap: 4px; width: 290px; }
+  header .aiuto-menu button { text-align: left; border: none; padding: 8px 10px; font-size: .95em; }
+  .aiuto-menu small { display: block; color: var(--tenue); }
+  #guidaTesta { padding: 12px 16px 4px; display: flex; flex-wrap: wrap; align-items: center; gap: 6px 16px; }
+  #guidaTesta h1 { margin: 0; font-size: 1.3em; color: var(--blu); }
+  #guidaTesta p { margin: 0; color: var(--tenue); flex: 1; min-width: 260px; }
+  #guidaPerche { padding: 4px 16px 6px; }
+  #guidaPerche h2 { font-size: 1.1em; color: var(--blu); margin: 10px 0 6px; }
+  #guidaPerche .intro { margin: 0 0 10px; font-size: 1.05em; }
+  #guidaPerche .carte { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+  #guidaPerche .carta { background: #fff; border: 1px solid var(--bordo); border-left: 4px solid var(--blu); border-radius: 8px; padding: 9px 12px; break-inside: avoid; }
+  #guidaPerche .carta b { display: block; color: var(--blu); margin-bottom: 3px; }
+  #guidaPerche .fonti { color: var(--tenue); font-size: .9em; margin: 10px 0 0; }
+  #guidaPerche .titolo-schermata { margin-top: 18px; }
+  #guidaElenco { padding: 4px 20px 24px; }
+  #guidaElenco h2 { font-size: 1.1em; color: var(--blu); margin: 10px 0; }
+  #guidaElenco ol { list-style: none; margin: 0; padding: 0; columns: 2; column-gap: 28px; }
+  #guidaElenco li { break-inside: avoid; margin: 0 0 9px; padding-left: 2.1em; text-indent: -2.1em; font-size: .95em; }
+  @page { size: A4 portrait; margin: 10mm; }
+  @media print {
+    body { background: #fff; }
+    .solo-schermo { display: none !important; }
+    /* la schermata viene rimpicciolita per stare nella larghezza del foglio; l'elenco resta a grandezza piena */
+    body.guida { width: auto; }
+    body.guida header, body.guida .opzioni, body.guida main, body.guida .fascia { zoom: .69; width: 1040px; }
+    body.guida .fascia { width: 1008px; }
+    #guidaPerche { padding: 0; }
+    #guidaPerche .titolo-schermata { break-before: page; margin-top: 0; }
+    #guidaElenco { padding: 8px 0 0; }
+    #guidaElenco li { font-size: .9em; margin-bottom: 6px; }
+    body.stampa-scatola > *:not(#scatola) { display: none !important; }
+    .scatola { position: static; background: none; padding: 0; }
+    .bottoni-sn { display: none; }
+    .scatola details > table { display: table; }
+  }
+
+  /* Lettura facilitata */
+  body.facile { font-family: Verdana, Tahoma, sans-serif; line-height: 1.7; letter-spacing: .03em; }
+  body.facile .tok .parola { font-size: 1.8rem; letter-spacing: .06em; padding: 4px 8px 6px; }
+  body.facile .gap { width: 28px; }
+  body.facile .riga { row-gap: 30px; }
+
+  .firma { text-align: center; font-size: .78em; color: var(--tenue); padding: 0 16px 10px; letter-spacing: 0; }
+  .firma a { color: var(--tenue); }
+
+  #erroreTecnico { background: var(--rosso); color: #fff; padding: 8px 16px; font-size: .9em; }
+</style>
+</head>
+<body>
+<div id="erroreTecnico" class="nascosto"></div>
+
+<header>
+  <span class="nome">Simulatore</span>
+  <span class="frase-n" id="fraseN">Analisi logica · frase 1 di 3</span>
+  <span class="modo" title="Modalità di lavoro">
+    <button data-azione="modo" data-valore="schermo" id="modoSchermo" class="attivo">Schermo</button><button data-azione="modo" data-valore="quaderno" id="modoQuaderno">Quaderno</button>
+  </span>
+  <span class="spazio"></span>
+  <button data-azione="frase" data-valore="-1" id="btnPrec" title="Frase precedente">◀ Frase</button>
+  <button data-azione="frase" data-valore="1" id="btnSucc" title="Frase successiva">Frase ▶</button>
+  <button data-azione="pausa" id="btnPausa" disabled>⏸ Pausa</button>
+  <button data-azione="scatola" title="Scatola nera: il registro per l'insegnante">📋 Registro</button>
+  <button data-azione="opzioni" id="btnOpzioni" title="Livello e aiuti (per l'insegnante)">⚙ Opzioni</button>
+  <span class="aiuto-box" id="aiutoBox">
+    <button data-azione="aiuto-menu" id="btnAiuto" title="Aiuto">? Aiuto</button>
+    <span class="aiuto-menu nascosto" id="menuAiuto">
+      <button data-azione="tour"><b>Indicazioni veloci</b><small>Quattro fumetti che presentano lo schermo</small></button>
+      <button data-azione="guida"><b>Guida completa da stampare</b><small>Per l'insegnante: il perché e tutti i comandi</small></button>
+    </span>
+  </span>
+</header>
+
+<!-- OPZIONI PER L'INSEGNANTE (bottone a espansione) -->
+<section class="opzioni nascosto" id="opzioni">
+  <div class="gruppo-opz">
+    <span class="titolo-opz">Grammatica</span>
+    <span class="modo">
+      <button data-azione="profilo" data-valore="a">Modello A</button><button data-azione="profilo" data-valore="b">Modello B</button><button data-azione="profilo" data-valore="c">Modello C</button>
+    </span>
+    <span id="notaProfilo" style="color:var(--tenue);font-size:.92em;white-space:normal"></span>
+  </div>
+  <div class="gruppo-opz">
+    <span class="titolo-opz">Livello</span>
+    <span class="modo">
+      <button data-azione="livello" data-valore="1">Base</button><button data-azione="livello" data-valore="2">Intermedio</button><button data-azione="livello" data-valore="3">Completo</button>
+    </span>
+  </div>
+  <div class="gruppo-opz">
+    <span class="titolo-opz">Aiuti</span>
+    <label><input type="checkbox" data-azione="aiuto" data-valore="divisione"> Divisione già fatta</label>
+    <label><input type="checkbox" data-azione="aiuto" data-valore="guida"> Domande guida</label>
+    <label><input type="checkbox" data-azione="aiuto" data-valore="ridotte"> Meno scelte (domande e sigle)</label>
+    <label><input type="checkbox" data-azione="aiuto" data-valore="tempo"> Senza tempo</label>
+    <label><input type="checkbox" data-azione="aiuto" data-valore="lettura"> Lettura facilitata</label>
+  </div>
+  <div class="gruppo-opz">
+    <button data-azione="link" title="Crea il link da dare agli alunni, con queste scelte già impostate">🔗 Link per la classe</button>
+    <input id="linkBox" class="nascosto" readonly size="46">
+    <span id="linkNota" style="color:var(--verde)"></span>
+  </div>
+</section>
+
+<!-- SCATOLA NERA -->
+<div class="scatola nascosto" id="scatola"><div class="dentro" id="scatolaDentro"></div></div>
+
+<main id="main">
+  <!-- PROCEDURA -->
+  <section class="zona" id="zonaProc">
+    <div class="striscia" data-azione="apriProc">Procedura</div>
+    <h2>Procedura <button data-azione="chiudiProc" title="Riduci">‹</button></h2>
+    <div id="passi"></div>
+  </section>
+
+  <!-- DIALOGO -->
+  <section class="zona dialogo" id="zonaDialogo">
+    <div class="copertura" id="copertura">
+      <div class="box">
+        <h3 id="copTitolo">Pronto?</h3>
+        <p id="copTesto">Quando sei pronto a concentrarti, premi INIZIA.</p>
+        <button class="verde" id="copBottone" data-azione="inizia">▶ INIZIA</button>
+      </div>
+    </div>
+    <div class="consegna" id="consegna"></div>
+    <div class="frase-box"><div class="riga" id="riga"></div><div><button id="btnAscolta" class="nascosto" data-azione="ascolta">🔊 Ascolta la frase</button></div></div>
+    <div class="suggerimento" id="suggerimento"></div>
+    <div id="comandi"></div>
+  </section>
+
+  <!-- LEGENDA -->
+  <section class="zona" id="zonaLeg">
+    <div class="striscia" data-azione="apriLeg">Legenda</div>
+    <h2>Legenda <button data-azione="chiudiLeg" title="Riduci">›</button></h2>
+    <div id="legenda"></div>
+  </section>
+</main>
+
+<!-- UNITÀ DI COMPENSAZIONE -->
+<section class="fascia" id="fascia">
+  <div class="titolo-fascia" id="fasciaTitolo">Unità di Compensazione · nessun avviso</div>
+  <div class="contenuto" id="fasciaContenuto"></div>
+</section>
+
+<footer class="firma">
+  Simulatore · ideato da <b>Massimo Bellagente</b> ·
+  <a href="https://www.creareconoscenza.com/" target="_blank" rel="noopener">creareconoscenza.com</a> ·
+  uso libero e gratuito citando l'autore, senza modifiche e senza scopo commerciale
+  (<a href="https://creativecommons.org/licenses/by-nc-nd/4.0/deed.it" target="_blank" rel="noopener">licenza CC BY-NC-ND 4.0</a>)
+</footer>
+
+<script>
+/* =====================================================================
+   DATI (nel Simulatore completo verranno dal catalogo e dai profili)
+   ===================================================================== */
+const SIGLE = {
+  /* liv = livello in cui la sigla compare (1 base, 2 intermedio, 3 completo): valori provvisori, da tarare.
+     g = domanda guida, mostrata solo con l'aiuto "Domande guida". */
+  PV: { breve: "PV", nome: "Predicato verbale", liv: 1, g: "che cosa fa? dove si trova?" },
+  PN: { breve: "PN", nome: "Predicato nominale", liv: 1, g: "essere + com'è? chi è?" },
+  SOGG: { breve: "SOGG", nome: "Soggetto", liv: 1, g: "chi? che cosa? + predicato" },
+  ATTR: { breve: "ATTR", nome: "Attributo", liv: 1, g: "è un aggettivo" },
+  APP: { breve: "APP", nome: "Apposizione", liv: 1, g: "è un nome" },
+  CO: { breve: "CO", nome: "Complemento oggetto", liv: 1, g: "chi? che cosa?" },
+  C_PRED_SOGG: { breve: "C. PRED. SOGG", nome: "Compl. predicativo del soggetto", liv: 2, g: "come? che cosa? (riferito al soggetto)" },
+  C_PRED_OGG: { breve: "C. PRED. OGG", nome: "Compl. predicativo dell'oggetto", liv: 2, g: "come? che cosa? (riferito all'oggetto)" },
+  C_SPEC: { breve: "C. SPEC", nome: "Compl. di specificazione", liv: 1, g: "di chi? di che cosa?" },
+  C_DEN: { breve: "C. DEN", nome: "Compl. di denominazione", liv: 2, g: "di quale nome?" },
+  C_ARG: { breve: "C. ARG", nome: "Compl. di argomento", liv: 2, g: "di quale argomento si parla?" },
+  C_MAT: { breve: "C. MAT", nome: "Compl. di materia", liv: 2, g: "fatto di che cosa?" },
+  C_PART: { breve: "C. PART", nome: "Compl. partitivo", liv: 2, g: "tra chi? tra che cosa?" },
+  C_ABB: { breve: "C. ABB", nome: "Compl. di abbondanza", liv: 3, g: "pieno di che cosa?" },
+  C_PRIV: { breve: "C. PRIV", nome: "Compl. di privazione", liv: 3, g: "privo di che cosa?" },
+  C_TERM: { breve: "C. TERM", nome: "Compl. di termine", liv: 1, g: "a chi? a che cosa?" },
+  C_VANT: { breve: "C. VANT", nome: "Compl. di vantaggio", liv: 2, g: "a favore di chi?" },
+  C_SVANT: { breve: "C. SVANT", nome: "Compl. di svantaggio", liv: 2, g: "a danno di chi?" },
+  C_AG: { breve: "C. AG", nome: "Compl. d'agente", liv: 2, g: "da chi? (persona o animale)" },
+  C_CEFF: { breve: "C. C. EFF", nome: "Compl. di causa efficiente", liv: 2, g: "da che cosa? (cosa)" },
+  C_STATO: { breve: "C. ST. LUOGO", nome: "Compl. di stato in luogo", liv: 1, g: "dove si trova?" },
+  C_MOTO_A: { breve: "C. M. A LUOGO", nome: "Compl. di moto a luogo", liv: 1, g: "verso dove va?" },
+  C_MOTO_DA: { breve: "C. M. DA LUOGO", nome: "Compl. di moto da luogo", liv: 1, g: "da dove viene?" },
+  C_MOTO_PER: { breve: "C. M. PER LUOGO", nome: "Compl. di moto per luogo", liv: 1, g: "attraverso dove passa?" },
+  C_ORIG: { breve: "C. ORIG", nome: "Compl. di origine o provenienza", liv: 2, g: "da dove ha origine?" },
+  C_ALL: { breve: "C. ALL", nome: "Compl. di allontanamento o separazione", liv: 2, g: "lontano da chi? da che cosa?" },
+  C_TEMPO_DET: { breve: "C. T. DET", nome: "Compl. di tempo determinato", liv: 1, g: "quando?" },
+  C_TEMPO_CONT: { breve: "C. T. CONT", nome: "Compl. di tempo continuato", liv: 1, g: "per quanto tempo?" },
+  C_ETA: { breve: "C. ETÀ", nome: "Compl. di età", liv: 2, g: "a quale età? di quanti anni?" },
+  C_CAUSA: { breve: "C. CAUSA", nome: "Compl. di causa", liv: 1, g: "a causa di che cosa?" },
+  C_FINE: { breve: "C. FINE", nome: "Compl. di fine o scopo", liv: 1, g: "a quale scopo?" },
+  C_COLPA: { breve: "C. COLPA", nome: "Compl. di colpa", liv: 3, g: "di quale colpa?" },
+  C_MEZZO: { breve: "C. MEZZO", nome: "Compl. di mezzo", liv: 1, g: "con che cosa?" },
+  C_COMP: { breve: "C. COMP", nome: "Compl. di compagnia", liv: 1, g: "insieme a chi?" },
+  C_UN: { breve: "C. UN", nome: "Compl. di unione", liv: 2, g: "insieme a che cosa?" },
+  C_MODO: { breve: "C. MODO", nome: "Compl. di modo", liv: 1, g: "come? in che modo?" },
+  C_QUAL: { breve: "C. QUAL", nome: "Compl. di qualità", liv: 2, g: "con quali caratteristiche?" },
+  C_PESO: { breve: "C. PESO", nome: "Compl. di peso", liv: 3, g: "quanto pesa?" },
+  C_MIS: { breve: "C. MIS", nome: "Compl. di misura", liv: 3, g: "quanto misura?" },
+  C_EST: { breve: "C. EST", nome: "Compl. di estensione", liv: 3, g: "quanto è lungo, alto, largo?" },
+  C_DIST: { breve: "C. DIST", nome: "Compl. di distanza", liv: 3, g: "a quale distanza?" },
+  C_PREZZO: { breve: "C. PREZZO", nome: "Compl. di prezzo", liv: 3, g: "quanto costa?" },
+  C_STIMA: { breve: "C. STIMA", nome: "Compl. di stima", liv: 3, g: "quanto vale?" },
+  C_CONC: { breve: "C. CONC", nome: "Compl. concessivo", liv: 3, g: "nonostante, malgrado…" },
+  C_ESCL: { breve: "C. ESCL", nome: "Compl. di esclusione", liv: 3, g: "senza chi? senza che cosa?" },
+  C_ECC: { breve: "C. ECC", nome: "Compl. eccettuativo", liv: 3, g: "tranne chi? eccetto chi?" },
+  C_AGG: { breve: "C. AGG", nome: "Compl. aggiuntivo", liv: 3, g: "oltre a chi? oltre a che cosa?" },
+  C_SOST: { breve: "C. SOST", nome: "Compl. di sostituzione o scambio", liv: 3, g: "invece di, al posto di…" },
+  C_LIM: { breve: "C. LIM", nome: "Compl. di limitazione", liv: 3, g: "quanto a, in fatto di…" },
+  C_PAR: { breve: "C. PAR", nome: "Compl. di paragone", liv: 3, g: "più di, meno di…" },
+  C_DISTR: { breve: "C. DISTR", nome: "Compl. distributivo", liv: 3, g: "ogni quanto? a testa, alla volta…" },
+  C_RAPP: { breve: "C. RAPP", nome: "Compl. di rapporto", liv: 3, g: "tra chi? con chi?" },
+  C_PENA: { breve: "C. PENA", nome: "Compl. di pena", liv: 3, g: "a quale pena?" },
+  /* Voci unite: compaiono solo nei profili di grammatica che accorpano due complementi */
+  C_ABB_PRIV: { unione: true, breve: "C. ABB/PRIV", nome: "Compl. di abbondanza e di privazione", liv: 3, g: "fornito o privo di che cosa?" },
+  C_MIS_EST: { unione: true, breve: "C. MIS/EST", nome: "Compl. di misura o estensione", liv: 3, g: "quanto lungo, largo, alto?" },
+  C_PESO_MIS: { unione: true, breve: "C. PESO/MIS", nome: "Compl. di peso o misura", liv: 3, g: "quanto pesa? quanto misura?" },
+  C_AG_CEFF: { unione: true, breve: "C. AG/C. EFF", nome: "Compl. d'agente e di causa efficiente", liv: 2, g: "da chi? da che cosa?" },
+  C_COMP_UN: { unione: true, breve: "C. COMP/UN", nome: "Compl. di compagnia e unione", liv: 1, g: "con chi? con che cosa?" },
+  C_VANT_SVANT: { unione: true, breve: "C. VANT/SVANT", nome: "Compl. di vantaggio e svantaggio", liv: 2, g: "a favore o a danno di chi?" }
+};
+
+/* PROFILI DI GRAMMATICA: il catalogo è "a grana fine"; ogni profilo dice che cosa unire e che cosa spegnere.
+   Le frasi sono annotate una volta sola, con la sigla più fine: il profilo decide come chiamarla. */
+const PROFILI = {
+  a: { nome: "Modello A", nota: "Tiene separati agente e causa efficiente, compagnia e unione, vantaggio e svantaggio. Unisce abbondanza e privazione, misura ed estensione. L'eccettuativo è compreso nell'esclusione.",
+    unioni: { C_ABB: "C_ABB_PRIV", C_PRIV: "C_ABB_PRIV", C_MIS: "C_MIS_EST", C_EST: "C_MIS_EST", C_ECC: "C_ESCL" }, spenti: ["C_AGG"] },
+  b: { nome: "Modello B", nota: "Unisce agente e causa efficiente, compagnia e unione, peso e misura. Tiene separati abbondanza e privazione, vantaggio e svantaggio. L'eccettuativo è compreso nell'esclusione.",
+    unioni: { C_AG: "C_AG_CEFF", C_CEFF: "C_AG_CEFF", C_COMP: "C_COMP_UN", C_UN: "C_COMP_UN", C_PESO: "C_PESO_MIS", C_MIS: "C_PESO_MIS", C_ECC: "C_ESCL" }, spenti: ["C_AGG"] },
+  c: { nome: "Modello C", nota: "Unisce vantaggio e svantaggio, abbondanza e privazione, peso e misura. Distingue l'eccettuativo dall'esclusione e ha in più il complemento aggiuntivo.",
+    unioni: { C_VANT: "C_VANT_SVANT", C_SVANT: "C_VANT_SVANT", C_ABB: "C_ABB_PRIV", C_PRIV: "C_ABB_PRIV", C_PESO: "C_PESO_MIS", C_MIS: "C_PESO_MIS" }, spenti: [] }
+};
+let profilo = "a";
+function canon(k) { return PROFILI[profilo].unioni[k] || k; }
+function inUso(k) { return !SIGLE[k].unione && !PROFILI[profilo].spenti.includes(k) && SIGLE[k].liv <= livello; }
+
+/* Le domande del menu a due tempi, raggruppate in FAMIGLIE: al massimo nove visibili.
+   Compaiono solo le famiglie che hanno almeno un complemento nel livello scelto.
+   altra: true = domande dei "piccoli" complementi, dietro il bottone «Altre domande ▸». */
+const DOMANDE = [
+  { id: "chi", testo: "Chi? Che cosa? (senza preposizione)", sigle: ["CO", "C_PRED_SOGG", "C_PRED_OGG"] },
+  { id: "di", testo: "Di chi? Di che cosa?", sigle: ["C_SPEC", "C_DEN", "C_ARG", "C_MAT", "C_PART", "C_ABB", "C_PRIV"] },
+  { id: "a", testo: "A chi? Per chi?", sigle: ["C_TERM", "C_VANT", "C_SVANT"] },
+  { id: "da", testo: "Da chi? Da che cosa? (verbo passivo)", sigle: ["C_AG", "C_CEFF"] },
+  { id: "dove", testo: "Dove? Da dove? Per dove?", sigle: ["C_STATO", "C_MOTO_A", "C_MOTO_DA", "C_MOTO_PER", "C_ORIG", "C_ALL"] },
+  { id: "quando", testo: "Quando? Per quanto tempo?", sigle: ["C_TEMPO_DET", "C_TEMPO_CONT", "C_ETA"] },
+  { id: "perche", testo: "Perché? Per quale scopo?", sigle: ["C_CAUSA", "C_FINE", "C_COLPA"] },
+  { id: "con", testo: "Con che cosa? Con chi? Come?", sigle: ["C_MEZZO", "C_COMP", "C_UN", "C_MODO", "C_QUAL"] },
+  { id: "quanto", testo: "Quanto?", sigle: ["C_PESO", "C_MIS", "C_EST", "C_DIST", "C_PREZZO", "C_STIMA"] },
+  { id: "nonostante", altra: true, testo: "Nonostante che cosa?", sigle: ["C_CONC"] },
+  { id: "tranne", altra: true, testo: "Tranne chi? Senza chi?", sigle: ["C_ESCL", "C_ECC"] },
+  { id: "oltre", altra: true, testo: "Oltre a chi? Oltre a che cosa?", sigle: ["C_AGG"] },
+  { id: "invece", altra: true, testo: "Invece di chi? Al posto di che cosa?", sigle: ["C_SOST"] },
+  { id: "rispetto", altra: true, testo: "Limitatamente a che cosa?", sigle: ["C_LIM"] },
+  { id: "paragone", altra: true, testo: "Più o meno di chi?", sigle: ["C_PAR"] },
+  { id: "ogni", altra: true, testo: "Ogni quanto? In quale proporzione?", sigle: ["C_DISTR"] },
+  { id: "rapporto", altra: true, testo: "In rapporto con chi? Tra chi?", sigle: ["C_RAPP"] },
+  { id: "pena", altra: true, testo: "A quale pena?", sigle: ["C_PENA"] }
+];
+
+/* OPZIONI DELL'INSEGNANTE: livello e aiuti (anche dal link: ?livello=completo&aiuti=divisione,guida) */
+const inGuida = new URLSearchParams(location.search).get("guida") === "1";
+const inClasse = new URLSearchParams(location.search).get("classe") === "1";
+let livello = 1;
+const aiuti = { divisione: false, guida: false, ridotte: false, tempo: false, lettura: false };
+function sigleDi(d) { return [...new Set(d.sigle.filter(inUso).map(canon))]; }
+
+const FRASI = [
+  {
+    testo: "La giovane maestra Carla è stanca per il viaggio.",
+    pred: { idx: [4, 5], sigla: "PN" },
+    sogg: { idx: [3], ammessi: [0] },
+    gruppi: [[0, 1, 2, 3], [4, 5], [6, 7, 8]],
+    unita: [
+      { idx: [1], sigla: "ATTR", passo: "sogg", rif: "del soggetto" },
+      { idx: [2], sigla: "APP", passo: "sogg", rif: "del soggetto" },
+      { idx: [6, 7, 8], sigla: "C_CAUSA", passo: "comp", domanda: "perche" }
+    ]
+  },
+  {
+    testo: "Il cane bianco del vicino ha rosicchiato una scarpa.",
+    pred: { idx: [5, 6], sigla: "PV" },
+    sogg: { idx: [1], ammessi: [0] },
+    gruppi: [[0, 1, 2], [3, 4], [5, 6], [7, 8]],
+    unita: [
+      { idx: [2], sigla: "ATTR", passo: "sogg", rif: "del soggetto" },
+      { idx: [3, 4], sigla: "C_SPEC", passo: "comp", domanda: "di" },
+      { idx: [7, 8], sigla: "CO", passo: "comp", domanda: "chi" }
+    ]
+  },
+  {
+    testo: "Stasera non torneremo a casa in treno.",
+    pred: { idx: [1, 2], sigla: "PV" },
+    sogg: { sottinteso: "noi" },
+    gruppi: [[0], [1, 2], [3, 4], [5, 6]],
+    unita: [
+      { idx: [0], sigla: "C_TEMPO_DET", passo: "comp", domanda: "quando" },
+      { idx: [3, 4], sigla: "C_MOTO_A", passo: "comp", domanda: "dove" },
+      { idx: [5, 6], sigla: "C_MEZZO", passo: "comp", domanda: "con" }
+    ]
+  },
+  {
+    testo: "Ieri la nonna ha preparato una torta squisita.",
+    pred: { idx: [3, 4], sigla: "PV" },
+    sogg: { idx: [2], ammessi: [1] },
+    gruppi: [[0], [1, 2], [3, 4], [5, 6, 7]],
+    unita: [
+      { idx: [0], sigla: "C_TEMPO_DET", passo: "comp", domanda: "quando" },
+      { idx: [5, 6, 7], sigla: "CO", passo: "comp", domanda: "chi" },
+      /* passo "acc": attributi e apposizioni che accompagnano un complemento */
+      { idx: [7], sigla: "ATTR", passo: "acc", rif: "del complemento oggetto" }
+    ]
+  },
+  {
+    liv: 2,
+    testo: "I compagni hanno eletto Marta capoclasse.",
+    pred: { idx: [2, 3], sigla: "PV" },
+    sogg: { idx: [1], ammessi: [0] },
+    gruppi: [[0, 1], [2, 3], [4], [5]],
+    unita: [
+      { idx: [4], sigla: "CO", passo: "comp", domanda: "chi" },
+      { idx: [5], sigla: "C_PRED_OGG", passo: "comp", domanda: "chi" }
+    ]
+  },
+  {
+    liv: 2,
+    testo: "Il vaso di vetro è stato rotto dal gatto.",
+    pred: { idx: [4, 5, 6], sigla: "PV" },
+    sogg: { idx: [1], ammessi: [0] },
+    gruppi: [[0, 1], [2, 3], [4, 5, 6], [7, 8]],
+    unita: [
+      { idx: [2, 3], sigla: "C_MAT", passo: "comp", domanda: "di" },
+      { idx: [7, 8], sigla: "C_AG", passo: "comp", domanda: "da" }
+    ]
+  },
+  {
+    liv: 3,
+    testo: "Nonostante la pioggia tutti i ragazzi tranne Luca giocavano in cortile.",
+    pred: { idx: [8], sigla: "PV" },
+    sogg: { idx: [5], ammessi: [4] },
+    gruppi: [[0, 1, 2], [3, 4, 5], [6, 7], [8], [9, 10]],
+    unita: [
+      { idx: [3], sigla: "ATTR", passo: "sogg", rif: "del soggetto" },
+      { idx: [0, 1, 2], sigla: "C_CONC", passo: "comp", domanda: "nonostante" },
+      { idx: [6, 7], sigla: "C_ECC", passo: "comp", domanda: "tranne" },
+      { idx: [9, 10], sigla: "C_STATO", passo: "comp", domanda: "dove" }
+    ]
+  }
+];
+/* Le frasi proposte dipendono dal livello scelto */
+let ATTIVE = FRASI;
+
+/* I passi hanno un nome; la modalità decide quali usare e in che ordine */
+const PASSI_DEF = {
+  div: { t: "Dividi in sintagmi", d: "Prima di tutto raggruppa le parole che lavorano insieme e separa i gruppi con una barretta." },
+  pred: { t: "Trova il Predicato", d: "Parti dal verbo: è il perno della frase. Decidi se forma un Predicato Verbale o Nominale." },
+  sogg: { t: "Trova il Soggetto", d: "Chiediti chi compie l'azione (o chi la subisce): può anche non essere scritto. Poi riconosci le parole che lo accompagnano." },
+  comp: { t: "Riconosci i Complementi", d: "Per ogni gruppo rimasto, trova la domanda a cui risponde, poi il tipo di complemento." },
+  col: { t: "Riscrivi in colonna", d: "Sul quaderno, metti in fila i gruppi, uno per riga, ciascuno con la sua funzione." },
+  ctrl: { t: "Controlla", d: "Rileggi tutto: nessuna parola dimenticata, nessuna regola trascurata." }
+};
+let modo = "schermo";
+function sequenza() {
+  const s = modo === "quaderno" ? ["div", "pred", "sogg", "comp", "col", "ctrl"] : ["div", "pred", "sogg", "comp", "ctrl"];
+  return aiuti.divisione ? s.filter(x => x !== "div") : s;   // aiuto: la frase arriva già divisa
+}
+function P() { return sequenza()[st.passo - 1] || "fine"; }
+
+/* Unità di Compensazione (spiegazione + esempio + contro-verifica con una frase nuova) */
+const COMPENSAZIONE = {
+  predicato: { titolo: "Il predicato", testo: "Il predicato è il perno della frase: dice che cosa fa il soggetto, che cosa subisce o in che stato si trova. Se c'è «non», la negazione fa parte del predicato; se c'è il verbo essere seguito da un nome o da un aggettivo, anche quello fa parte del predicato.", esempio: "Marco <u>non mangia</u> la mela. · Il cielo <u>è azzurro</u>.", domanda: "In «Anna non ascolta la radio», qual è il predicato?", opzioni: ["ascolta", "non ascolta", "ascolta la radio"], giusta: 1 },
+  PN: { titolo: "Il Predicato Nominale", testo: "È formato da una voce di <b>essere</b> (la copula) + un nome o un aggettivo (la parte nominale), che dice com'è o chi è il soggetto. Prova: se al posto di «è» puoi dire «si trova», «esiste» o «appartiene», allora non è un predicato nominale.", esempio: "La mela <u>è rossa</u> → la mela «si trova rossa»? No: è PN.", domanda: "In quale frase c'è un Predicato Nominale?", opzioni: ["Antonio è a Roma.", "La torta è buonissima.", "Luca è arrivato presto."], giusta: 1 },
+  PV: { titolo: "Il Predicato Verbale", testo: "È formato da un verbo che da solo esprime un'azione o un modo di essere. Anche <b>essere</b> forma un Predicato Verbale quando significa stare, trovarsi, esistere, e quando fa da ausiliare (è arrivato, sono rimasti).", esempio: "Antonio <u>è</u> a Roma → «si trova» a Roma: PV.", domanda: "In quale frase c'è un Predicato Verbale?", opzioni: ["Il mare è calmo.", "Giulia è maestra.", "Giulia è a scuola."], giusta: 2 },
+  SOGG: { titolo: "Il soggetto", testo: "È chi compie l'azione, chi la subisce o chi si trova nello stato espresso dal predicato. Fai la domanda <b>chi? che cosa?</b> seguita dal predicato. Non sempre sta all'inizio.", esempio: "Ieri è arrivata <u>la nonna</u> → chi è arrivata? la nonna.", domanda: "In «Al mattino canta il gallo», qual è il soggetto?", opzioni: ["il mattino", "il gallo", "canta"], giusta: 1 },
+  sottinteso: { titolo: "Il soggetto sottinteso", testo: "Se nessuna parola compie l'azione, il soggetto non è scritto: si ricava dalla <b>persona del verbo</b>.", esempio: "<u>Andiamo</u> al mare → soggetto sottinteso: noi.", domanda: "In «Leggerete il libro», qual è il soggetto sottinteso?", opzioni: ["loro", "voi", "noi"], giusta: 1 },
+  ATTR: { titolo: "L'attributo", testo: "È un <b>aggettivo</b> che accompagna un nome per indicarne una qualità.", esempio: "Il gatto <u>nero</u> dorme.", domanda: "In «Il vecchio pescatore ripara la rete», qual è l'attributo?", opzioni: ["vecchio", "pescatore", "rete"], giusta: 0 },
+  APP: { titolo: "L'apposizione", testo: "È un <b>nome</b> (non un aggettivo) che si affianca a un altro nome per precisarlo: titolo, professione, parentela.", esempio: "Il <u>dottor</u> Rossi · Lo <u>zio</u> Carlo", domanda: "In «L'avvocato Verdi parla in tribunale», qual è l'apposizione?", opzioni: ["Verdi", "avvocato", "tribunale"], giusta: 1 },
+  sintagma: { titolo: "Dividere in sintagmi", testo: "Un sintagma è un gruppo di parole con <b>una sola funzione</b>. Articoli e preposizioni stanno con il nome; attributi e apposizioni restano con il nome a cui si riferiscono; «non» resta con il verbo.", esempio: "Il gatto nero / di Giulia / ha catturato / un topo.", domanda: "Qual è la divisione corretta di «Il cane di Anna dorme»?", opzioni: ["Il / cane di Anna / dorme", "Il cane / di Anna / dorme", "Il cane di / Anna / dorme"], giusta: 1 },
+  domanda: { titolo: "La domanda giusta", testo: "Ogni complemento risponde a una domanda precisa. Rileggi la frase <b>unendo il predicato al sintagma</b> e chiediti che informazione aggiunge: una persona? un luogo? un tempo? una causa? un mezzo?", esempio: "«Scrive … con la matita» → con che cosa? → mezzo.", domanda: "«Tremava dal freddo»: a quale domanda risponde «dal freddo»?", opzioni: ["Da dove?", "Perché?", "Con che cosa?"], giusta: 1 },
+  CO: { titolo: "Il complemento oggetto", testo: "Indica su chi o che cosa passa direttamente l'azione. Risponde a <b>chi? che cosa?</b> ed è legato al verbo <b>senza preposizione</b>.", esempio: "Il gatto ha catturato <u>un topo</u>.", domanda: "In «Paolo regala un libro a Sara», qual è il complemento oggetto?", opzioni: ["a Sara", "un libro", "Paolo"], giusta: 1 },
+  C_SPEC: { titolo: "Specificazione e argomento", testo: "Tutti e due possono essere introdotti da <b>di</b>. La specificazione precisa <i>di chi / di che cosa</i> è qualcosa; l'argomento indica <i>di che cosa si parla</i> (spesso con verbi come parlare, discutere, scrivere).", esempio: "Il gatto <u>di Giulia</u> (specificazione) · Parliamo <u>di sport</u> (argomento)", domanda: "In «La casa dei nonni è grande», «dei nonni» è…", opzioni: ["complemento di argomento", "complemento di specificazione"], giusta: 1 },
+  C_CAUSA: { titolo: "Causa e fine", testo: "La <b>causa</b> indica il motivo di ciò che accade (è già successo); il <b>fine</b> indica lo scopo verso cui si agisce (è una meta). Prova: «a causa di…» → causa; «allo scopo di…» → fine.", esempio: "Tremava <u>dal freddo</u> (a causa del freddo) · Studia <u>per l'esame</u> (allo scopo di superarlo)", domanda: "«Il negozio è chiuso per ferie»: «per ferie» è…", opzioni: ["complemento di fine", "complemento di causa"], giusta: 1 },
+  C_LUOGO: { titolo: "I complementi di luogo", testo: "Rispondono a <b>dove?</b>, ma con sfumature diverse: <i>stato</i> (dove si trova: sono a casa), <i>moto a luogo</i> (verso dove va: torno a casa), <i>moto da luogo</i> (da dove viene), <i>moto per luogo</i> (attraverso dove passa). Guarda il verbo: c'è movimento?", esempio: "Resto <u>in ufficio</u> (stato) · Vado <u>in ufficio</u> (moto a luogo)", domanda: "«Andiamo in piscina»: «in piscina» è…", opzioni: ["stato in luogo", "moto a luogo", "moto per luogo"], giusta: 1 },
+  C_TEMPO: { titolo: "I complementi di tempo", testo: "Il <b>tempo determinato</b> risponde a <i>quando?</i> (un momento); il <b>tempo continuato</b> a <i>per quanto tempo?</i> (una durata). Anche avverbi come ieri, oggi, stasera sono complementi di tempo.", esempio: "<u>Domenica</u> andremo al mare (quando?) · Ho dormito <u>per tre ore</u> (per quanto tempo?)", domanda: "«Ha nevicato per due giorni»: «per due giorni» è…", opzioni: ["tempo determinato", "tempo continuato"], giusta: 1 },
+  PRED: { titolo: "I complementi predicativi", testo: "Sono complementi <b>diretti</b>, come l'oggetto: un nome o un aggettivo che completa il significato del verbo. Il <b>predicativo dell'oggetto</b> dice che cosa o come diventa l'oggetto (con verbi come eleggere, nominare, chiamare, giudicare, alla forma attiva). Il <b>predicativo del soggetto</b> si riferisce al soggetto (con gli stessi verbi al passivo o con verbi come sembrare, diventare).", esempio: "Hanno nominato Paolo <u>direttore</u> (dell'oggetto) · Paolo è stato nominato <u>direttore</u> (del soggetto)", domanda: "In «Tutti considerano Sara una campionessa», «una campionessa» è…", opzioni: ["complemento oggetto", "predicativo dell'oggetto", "predicativo del soggetto"], giusta: 1 },
+  C_AG: { titolo: "Agente e causa efficiente", testo: "Con un verbo <b>passivo</b>, indicano da chi o da che cosa è compiuta l'azione. Se è una persona o un animale è <b>agente</b>; se è una cosa o una forza della natura è <b>causa efficiente</b>.", esempio: "La lettera è stata scritta <u>da Marta</u> (agente) · L'albero è stato abbattuto <u>dal vento</u> (causa efficiente)", domanda: "«Il tetto fu danneggiato dalla grandine»: «dalla grandine» è…", opzioni: ["complemento d'agente", "complemento di causa efficiente"], giusta: 1 },
+  SPIA: { titolo: "Le parole spia", testo: "Alcuni complementi si riconoscono dalla <b>parola che li introduce</b>: <i>nonostante, malgrado</i> → concessivo; <i>tranne, eccetto, senza</i> → esclusione; <i>invece di, al posto di</i> → sostituzione; <i>quanto a, in fatto di</i> → limitazione.", esempio: "<u>Malgrado il freddo</u> uscì (concessivo) · Mangia tutto <u>eccetto le verdure</u> (esclusione)", domanda: "«Al posto del latte bevo il tè»: «al posto del latte» è…", opzioni: ["complemento concessivo", "complemento di sostituzione", "complemento di esclusione"], giusta: 1 },
+  C_MEZZO: { titolo: "Mezzo, compagnia e modo", testo: "Rispondono a domande vicine: <b>mezzo</b> = con che cosa? (strumento, mezzo di trasporto); <b>compagnia</b> = con chi?; <b>modo</b> = come? in che modo?", esempio: "Viaggio <u>in aereo</u> (mezzo) · Esco <u>con Luca</u> (compagnia) · Parla <u>con calma</u> (modo)", domanda: "«Scrive con la penna rossa»: «con la penna rossa» è…", opzioni: ["compagnia", "modo", "mezzo"], giusta: 2 }
+};
+/* quale unità di compensazione usare per ogni sigla sbagliata */
+const CONCETTO_DI = { PN: "PN", PV: "PV", SOGG: "SOGG", ATTR: "ATTR", APP: "APP", CO: "CO", C_SPEC: "C_SPEC", C_ARG: "C_SPEC",
+  C_CAUSA: "C_CAUSA", C_FINE: "C_CAUSA", C_STATO: "C_LUOGO", C_MOTO_A: "C_LUOGO", C_MOTO_DA: "C_LUOGO", C_MOTO_PER: "C_LUOGO",
+  C_TEMPO_DET: "C_TEMPO", C_TEMPO_CONT: "C_TEMPO", C_MEZZO: "C_MEZZO", C_COMP: "C_MEZZO", C_MODO: "C_MEZZO", C_TERM: "domanda",
+  C_PRED_SOGG: "PRED", C_PRED_OGG: "PRED", C_AG: "C_AG", C_CEFF: "C_AG", C_CONC: "SPIA", C_ESCL: "SPIA", C_ECC: "SPIA", C_SOST: "SPIA", C_LIM: "SPIA" };
+
+const SOGLIA_FRETTA = 8; // secondi: valore provvisorio, da tarare con i dati della sperimentazione
+
+/* =====================================================================
+   STATO
+   ===================================================================== */
+let iFrase = 0, F, parole, st;
+const giaCorretti = {};   // concetti già usati correttamente nella sessione (per riconoscere il lapsus)
+const registro = [];
+
+function nuovoStato() {
+  return { passo: 1, sel: new Set(), predOk: false, soggOk: false, barre: new Set(), unitaOk: new Set(),
+    domandaScelta: null, gruppoSel: null, altre: false, accGruppo: null, diFila: 0, controlli: new Set(), avviato: false, inPausa: false,
+    inizio: 0, msPausa: 0, inizioPausa: 0, ultimaAzione: Date.now(), inizioPasso: Date.now(),
+    err: { procedura: 0, fretta: 0, lapsus: 0, concetto: 0 }, tentativi: 0, giuste: 0, compensazioni: 0, finito: false };
+}
+
+function carica(i) {
+  iFrase = i; F = ATTIVE[i]; parole = F.testo.split(" "); st = nuovoStato();
+  if (aiuti.divisione) st.barre = new Set(F.gruppi.slice(0, -1).map(g => g[g.length - 1]));
+  if (window.speechSynthesis) speechSynthesis.cancel();
+  document.getElementById("fraseN").textContent = `Analisi logica · frase ${i + 1} di ${ATTIVE.length}`;
+  document.getElementById("btnPrec").disabled = i === 0;
+  document.getElementById("btnSucc").disabled = i === ATTIVE.length - 1;
+  document.getElementById("btnPausa").disabled = true;
+  mostraCopertura(`Frase ${i + 1} di ${ATTIVE.length}`, "Quando sei pronto a concentrarti, premi INIZIA.", "▶ INIZIA", "inizia");
+  chiudiFascia();
+  disegna();
+  registra("frase caricata", F.testo);
+}
+
+/* =====================================================================
+   DISEGNO
+   ===================================================================== */
+function disegna() { disegnaPassi(); disegnaFrase(); disegnaDialogo(); disegnaLegenda(); }
+
+function disegnaPassi() {
+  document.getElementById("passi").innerHTML = sequenza().map((id, k) => {
+    const n = k + 1, p = PASSI_DEF[id];
+    const cls = n < st.passo ? "fatto" : n === st.passo ? "attivo" : "";
+    return `<div class="passo ${cls}" data-azione="apriPasso" data-valore="${n}"><b>${n}. ${p.t}</b><div class="dett">${p.d}</div></div>`;
+  }).join("");
+}
+
+function unitaDiToken(i) {
+  if (st.predOk && F.pred.idx.includes(i)) return { sigla: F.pred.sigla, primo: F.pred.idx[0] === i };
+  if (st.soggOk && F.sogg.idx && F.sogg.idx.includes(i)) return { sigla: "SOGG", primo: true };
+  // se la parola sta in più unità (un attributo dentro un complemento) vale la più piccola
+  let scelta = null;
+  for (let k = 0; k < F.unita.length; k++) {
+    const u = F.unita[k];
+    if (st.unitaOk.has(k) && u.idx.includes(i) && (!scelta || u.idx.length < scelta.idx.length)) scelta = u;
+  }
+  return scelta ? { sigla: scelta.sigla, primo: scelta.idx[0] === i } : null;
+}
+
+function disegnaFrase() {
+  const riga = document.getElementById("riga");
+  let html = "";
+  parole.forEach((p, i) => {
+    const u = unitaDiToken(i);
+    const cls = ["tok"];
+    if (st.sel.has(i)) cls.push("sel");
+    if (tokenRisolto(i)) cls.push("risolto");
+    if (st.predOk && F.pred.idx.includes(i)) cls.push("sottolineato");
+    const sigla = u && u.primo ? SIGLE[canon(u.sigla)].breve : "";
+    html += `<span class="${cls.join(" ")}" data-azione="parola" data-valore="${i}"><span class="sigla">${sigla}</span><span class="parola">${p}</span></span>`;
+    if (i < parole.length - 1) html += `<span class="gap ${st.barre.has(i) ? "barra" : ""}" data-azione="spazio" data-valore="${i}"><span>/</span></span>`;
+  });
+  if (F.sogg.sottinteso && st.soggOk) html = `<span class="tok risolto"><span class="sigla">SOGG</span><span class="parola">(${F.sogg.sottinteso})</span></span>` + html;
+  riga.innerHTML = html;
+}
+
+function disegnaDialogo() {
+  const c = document.getElementById("consegna");
+  const cmd = document.getElementById("comandi");
+  const sug = document.getElementById("suggerimento");
+  const id = P(), tot = sequenza().length;
+  const titolo = id !== "fine" ? `<span class="passo-n">Passo ${st.passo} di ${tot}</span>` : "";
+  sug.textContent = "";
+  if (id === "div") {
+    const q = modo === "quaderno" ? "Lavora prima <b>sul quaderno</b>, poi riporta qui la tua analisi, un passo alla volta.<br>" : "";
+    c.innerHTML = titolo + q + "Clicca negli <b>spazi tra le parole</b> per dividere la frase in sintagmi.";
+    cmd.innerHTML = `<div class="azioni"><button class="primario" data-azione="verificaBarre">Verifica la divisione</button></div>`;
+  } else if (id === "pred") {
+    c.innerHTML = titolo + "Clicca sul gruppo che forma il <b>predicato</b>, poi scegli la sigla.";
+    cmd.innerHTML = chips(["PV", "PN"], "sigla", st.sel.size === 0);
+    sug.textContent = st.sel.size ? "" : "Basta cliccare una parola: si seleziona tutto il suo gruppo.";
+  } else if (id === "sogg" && !st.soggOk) {
+    c.innerHTML = titolo + "Clicca sulla parola che è il <b>soggetto</b> e scegli la sigla. Se non è scritto, indicalo come sottinteso.";
+    cmd.innerHTML = chips(["SOGG"], "sigla", st.sel.size === 0) +
+      `<div class="azioni"><button data-azione="sottinteso">Il soggetto è sottinteso…</button></div>`;
+  } else if (id === "sogg") {
+    c.innerHTML = titolo + "Ora riconosci le parole che <b>accompagnano il soggetto</b>: clicca su una e scegli la sigla.";
+    cmd.innerHTML = chips(["ATTR", "APP"], "sigla", st.sel.size === 0);
+  } else if (id === "comp") {
+    if (st.accGruppo !== null) {
+      c.innerHTML = titolo + `In «<b>${testoIdx(F.gruppi[st.accGruppo])}</b>» c'è una parola che <b>accompagna il nome</b>: cliccala e scegli la sigla.`;
+      cmd.innerHTML = chips(["ATTR", "APP"], "sigla", st.sel.size === 0);
+    } else if (st.gruppoSel === null) {
+      c.innerHTML = titolo + "Clicca su un <b>gruppo di parole</b> ancora da analizzare.";
+      cmd.innerHTML = "";
+    } else if (!st.domandaScelta) {
+      c.innerHTML = titolo + `«<b>${testoIdx(F.gruppi[st.gruppoSel])}</b>»: a quale <b>domanda</b> risponde?`;
+      const v = domandeVisibili(unitaCorrente());
+      const extra = v.bottone === "altre" ? `<button data-azione="altre" data-valore="1">Altre domande ▸</button>`
+        : v.bottone === "principali" ? `<button data-azione="altre" data-valore="0">← domande principali</button>` : "";
+      cmd.innerHTML = `<div class="azioni">${v.lista.map(d => `<button class="chip domanda" data-azione="domanda" data-valore="${d.id}">${d.testo}</button>`).join("")}</div>` +
+        (extra ? `<div class="azioni">${extra}</div>` : "");
+    } else {
+      const d = DOMANDE.find(x => x.id === st.domandaScelta);
+      c.innerHTML = titolo + `«<b>${testoIdx(F.gruppi[st.gruppoSel])}</b>» risponde a «${d.testo}». Quale complemento è?`;
+      cmd.innerHTML = chips(sigleVisibili(d, unitaCorrente()), "sigla", false, true) +
+        `<div class="azioni"><button data-azione="cambiaDomanda">← cambia domanda</button></div>`;
+    }
+  } else if (id === "col") {
+    c.innerHTML = titolo + "Confronta la colonna qui sotto con quella che hai scritto <b>sul quaderno</b> e correggi eventuali differenze.";
+    cmd.innerHTML = `<div class="colonna">${colonna().map(r => `<div>${r}</div>`).join("")}</div>
+      <div class="azioni"><button class="primario" data-azione="colonnaOk">Ho controllato il quaderno</button></div>`;
+  } else if (id === "ctrl") {
+    const voci = ["Ho analizzato ogni parola.", "Articoli e preposizioni stanno con il loro nome.", "Attributi e apposizioni sono riferiti al nome giusto.", "Ho controllato se il soggetto era espresso o sottinteso."];
+    c.innerHTML = titolo + "Rileggi e spunta ogni <b>controllo</b>.";
+    cmd.innerHTML = voci.map((v, k) => `<label class="check"><input type="checkbox" data-azione="spunta" data-valore="${k}" ${st.controlli.has(k) ? "checked" : ""}> ${v}</label>`).join("") +
+      `<div class="azioni"><button class="verde" data-azione="concludi" ${st.controlli.size < 4 ? "disabled" : ""}>Concludi</button></div>`;
+  } else {
+    c.innerHTML = "<b>Analisi completata.</b> Il resoconto è nella fascia qui sotto.";
+    cmd.innerHTML = `<div class="azioni"><button data-azione="riprova">Rifai questa frase</button>${iFrase < ATTIVE.length - 1 ? `<button class="primario" data-azione="frase" data-valore="1">Frase successiva ▶</button>` : ""}</div>`;
+  }
+}
+
+function chips(codici, azione, disabilitati, sottotitolo) {
+  return `<div class="azioni">${sottotitolo ? '<div class="etichetta-scelta">Scegli il tipo:</div>' : ""}${codici.map(k => {
+    const S = SIGLE[k], guida = aiuti.guida && S.g;   // aiuto: nome per esteso e domanda guida sotto la sigla
+    return `<button class="chip ${guida ? "con-guida" : ""}" data-azione="${azione}" data-valore="${k}" ${disabilitati ? "disabled" : ""} title="${S.nome}">${guida ? `${S.nome}<small>${S.g}</small>` : S.breve}</button>`;
+  }).join("")}</div>`;
+}
+
+/* Il complemento ancora da analizzare nel gruppo selezionato */
+function unitaCorrente() {
+  const g = F.gruppi[st.gruppoSel];
+  return F.unita.find((x, j) => x.passo === "comp" && !st.unitaOk.has(j) && x.idx.every(i => g.includes(i)));
+}
+
+/* Quali domande mostrare: le famiglie del livello, le «altre» dietro un bottone;
+   con l'aiuto "Scelte ridotte" restano la domanda giusta e due alternative. */
+function domandeVisibili(u) {
+  const princ = DOMANDE.filter(d => !d.altra && sigleDi(d).length), altre = DOMANDE.filter(d => d.altra && sigleDi(d).length);
+  if (aiuti.ridotte) {
+    const altri = princ.filter(d => d.id !== u.domanda), n = u.idx[0];
+    const scelte = new Set([u.domanda, altri[n % altri.length].id, altri[(n + 3) % altri.length].id]);
+    return { lista: princ.concat(altre).filter(d => scelte.has(d.id)), bottone: "" };
+  }
+  if (st.altre) return { lista: altre, bottone: "principali" };
+  return { lista: princ, bottone: altre.length ? "altre" : "" };
+}
+function sigleVisibili(d, u) {
+  const tutte = sigleDi(d);
+  if (!aiuti.ridotte || tutte.length <= 2) return tutte;
+  const giusta = canon(u.sigla), altra = tutte.find(k => k !== giusta);
+  return tutte.filter(k => k === giusta || k === altra);
+}
+
+function disegnaLegenda() {
+  const id = P();
+  let attive = [];
+  if (id === "pred") attive = ["PV", "PN"];
+  else if (id === "sogg") attive = ["SOGG", "ATTR", "APP"];
+  else if (id === "comp" && st.accGruppo !== null) attive = ["ATTR", "APP"];
+  else if (id === "comp") attive = st.domandaScelta ? sigleDi(DOMANDE.find(d => d.id === st.domandaScelta)) : [];
+  let html = "";
+  if (id === "div") html += `<div class="sigla-riga"><b>/</b> separa due sintagmi</div>`;
+  else if (id === "comp" && !st.domandaScelta && st.accGruppo === null) html += `<div class="sigla-riga" style="color:var(--tenue)">Scegli prima la domanda: qui compariranno solo le sigle che le rispondono.</div>`;
+  html += attive.map(k => `<div class="sigla-riga"><b>${SIGLE[k].breve}</b> ${SIGLE[k].nome}</div>`).join("");
+  html += `<details class="legenda-altre"><summary>Tutte le sigle ▸</summary>${[...new Set(Object.keys(SIGLE).filter(inUso).map(canon))].map(k => `<div class="sigla-riga"><b>${SIGLE[k].breve}</b> ${SIGLE[k].nome}</div>`).join("")}</details>`;
+  const p = particolarita();
+  if (p) html += `<div class="partic"><b>Particolarità</b>${p}</div>`;
+  document.getElementById("legenda").innerHTML = html;
+}
+
+/* Solo la particolarità pertinente al passo e alla frase */
+function particolarita() {
+  const id = P();
+  if (id === "div" && parole.some(p => p.toLowerCase() === "non")) return "La negazione «non» resta unita al verbo: non va separata.";
+  if (id === "div") return "Articoli e preposizioni non si analizzano da soli: stanno con il nome.";
+  if (id === "pred") return "Il verbo essere + un nome o un aggettivo forma il Predicato Nominale.";
+  if (id === "sogg") return "Il soggetto può essere sottinteso: si ricava dalla persona del verbo.";
+  if (id === "comp") return "Guarda il verbo: se c'è movimento, il luogo può essere «a», «da» o «per».";
+  return "";
+}
+
+function testoIdx(idx) { return idx.map(i => parole[i].replace(/[.,;:!?]$/, "")).join(" "); }
+
+function colonna() {
+  const righe = [];
+  if (F.sogg.sottinteso) righe.push(`<b>(${F.sogg.sottinteso})</b> = Soggetto sottinteso`);
+  F.gruppi.forEach(g => {
+    const t = testoIdx(g);
+    if (g.some(i => F.pred.idx.includes(i))) { righe.push(`<b>${t}</b> = ${SIGLE[F.pred.sigla].nome}`); return; }
+    const parti = [];
+    if (F.sogg.idx && F.sogg.idx.every(i => g.includes(i))) parti.push(`Soggetto («${testoIdx(F.sogg.idx)}»)`);
+    F.unita.filter(u => u.idx.every(i => g.includes(i))).forEach(u =>
+      parti.push(`${SIGLE[canon(u.sigla)].nome}${u.rif ? " " + u.rif : ""}${u.idx.length === g.length ? "" : ` («${testoIdx(u.idx)}»)`}`));
+    righe.push(`<b>${t}</b> = ${parti.join(" + ")}`);
+  });
+  return righe;
+}
+
+/* =====================================================================
+   AZIONI
+   ===================================================================== */
+function attivo() { return st.avviato && !st.inPausa && !st.finito; }
+
+function clicParola(i) {
+  if (!attivo()) return;
+  const id = P();
+  if (id === "div") { suggerisci("In questo passo si clicca negli spazi tra le parole."); return; }
+  if (tokenRisolto(i)) { suggerisci("Questa parola è già analizzata."); return; }
+  const g = F.gruppi.findIndex(gr => gr.includes(i));
+  if (id === "comp" && st.accGruppo !== null) {
+    if (g !== st.accGruppo) { suggerisci("Prima completa il gruppo evidenziato."); return; }
+    st.sel = new Set([i]);
+  } else if (id === "comp") {
+    if (gruppoRisolto(g)) { suggerisci("Questo gruppo è già analizzato."); return; }
+    if (!unitaPendente(g, "comp")) { st.accGruppo = g; st.sel = new Set([i]); st.ultimaAzione = Date.now(); return disegna(); }
+    st.gruppoSel = g; st.domandaScelta = null; st.altre = false;
+    st.sel = new Set(F.gruppi[g]);
+  } else if (id === "pred") {
+    // la frase è già divisa: un clic seleziona (o deseleziona) tutto il gruppo
+    const tutto = F.gruppi[g].every(x => st.sel.has(x));
+    st.sel = tutto ? new Set() : new Set(F.gruppi[g]);
+  } else if (id === "sogg") {
+    st.sel.has(i) ? st.sel.delete(i) : st.sel.add(i);
+  } else return;
+  st.ultimaAzione = Date.now();
+  disegnaFrase(); disegnaDialogo(); disegnaLegenda();
+}
+
+/* Un gruppo è risolto quando non contiene più complementi da analizzare */
+function gruppoRisolto(g) { return !unitaPendente(g, "comp") && !unitaPendente(g, "acc"); }
+function unitaPendente(g, passo) {
+  return F.unita.some((u, j) => u.passo === passo && !st.unitaOk.has(j) && u.idx.every(i => F.gruppi[g].includes(i)));
+}
+function compFinito() { return !F.unita.some((u, j) => (u.passo === "comp" || u.passo === "acc") && !st.unitaOk.has(j)); }
+/* Un gruppo è completo quando tutto ciò che contiene è stato analizzato */
+function gruppoCompleto(g) {
+  const G = F.gruppi[g];
+  if (G.some(i => F.pred.idx.includes(i))) return st.predOk;
+  if (F.sogg.idx && F.sogg.idx.some(i => G.includes(i)))
+    return st.soggOk && !F.unita.some((u, j) => u.passo === "sogg" && !st.unitaOk.has(j) && u.idx.every(i => G.includes(i)));
+  return gruppoRisolto(g);
+}
+/* Attenuazione (van Dijk): dopo la divisione, ciò che è già analizzato passa sullo sfondo */
+function tokenRisolto(i) {
+  if (P() === "comp" && unitaPendente(F.gruppi.findIndex(g => g.includes(i)), "acc") && !unitaPendente(F.gruppi.findIndex(g => g.includes(i)), "comp")) return false;
+  if (unitaDiToken(i)) return true;
+  if (P() === "div") return false;
+  return gruppoCompleto(F.gruppi.findIndex(g => g.includes(i)));
+}
+
+function clicSpazio(i) {
+  if (!attivo()) return;
+  if (P() !== "div") { suggerisci("La frase è già divisa in sintagmi."); return; }
+  st.barre.has(i) ? st.barre.delete(i) : st.barre.add(i);
+  st.ultimaAzione = Date.now();
+  disegnaFrase();
+}
+
+function sceltaSigla(k) {
+  if (!attivo()) return;
+  const sel = [...st.sel].sort((a, b) => a - b);
+  st.tentativi++;
+  if (P() === "pred") {
+    const ok = sel.length === F.pred.idx.length && sel.every((v, j) => v === F.pred.idx[j]);
+    if (!ok) return sbaglio("predicato", "Le parole selezionate non formano esattamente il predicato.", true);
+    if (k !== F.pred.sigla) return sbaglio(F.pred.sigla, k === "PV" ? "Qui «è» non significa «si trova» né «esiste»: unisce il soggetto a una sua qualità." : "Qui il verbo esprime un'azione o un modo di essere da solo.", false);
+    st.predOk = true; giusto(F.pred.sigla); return avanza();
+  }
+  if (P() === "sogg" && !st.soggOk) {
+    if (F.sogg.sottinteso) return sbaglio("sottinteso", "Nessuna parola della frase compie l'azione: il soggetto non è scritto.", true);
+    const ok = F.sogg.idx.every(i => sel.includes(i)) && sel.every(i => F.sogg.idx.includes(i) || F.sogg.ammessi.includes(i));
+    if (!ok) return sbaglio("SOGG", "Non è il soggetto: fai la domanda chi? che cosa? seguita dal predicato.", true);
+    st.soggOk = true; giusto("SOGG"); st.sel.clear();
+    if (!F.unita.some(u => u.passo === "sogg")) return avanza();
+    return ridisegnaTutto();
+  }
+  if (P() === "sogg") {
+    const kU = F.unita.findIndex((u, j) => u.passo === "sogg" && !st.unitaOk.has(j) && u.idx.length === sel.length && u.idx.every(i => sel.includes(i)));
+    if (kU < 0) return sbaglio("ATTR", "Le parole selezionate non accompagnano il soggetto: selezionane una sola, un aggettivo o un nome vicino al soggetto.", true);
+    const u = F.unita[kU];
+    if (k !== u.sigla) return sbaglio(u.sigla, u.sigla === "APP" ? "È un nome, non un aggettivo." : "È un aggettivo, non un nome.", false);
+    st.unitaOk.add(kU); giusto(u.sigla); st.sel.clear();
+    if (!F.unita.some((x, j) => x.passo === "sogg" && !st.unitaOk.has(j))) return avanza();
+    return ridisegnaTutto();
+  }
+  if (P() === "comp" && st.accGruppo !== null) {
+    // attributo o apposizione di un complemento
+    const G = F.gruppi[st.accGruppo];
+    const kU = F.unita.findIndex((u, j) => u.passo === "acc" && !st.unitaOk.has(j) && u.idx.length === sel.length && u.idx.every(i => sel.includes(i)) && u.idx.every(i => G.includes(i)));
+    if (kU < 0) return sbaglio("ATTR", "Non è questa la parola che accompagna il nome: cerca un aggettivo o un secondo nome.", false);
+    const u = F.unita[kU];
+    if (k !== u.sigla) return sbaglio(u.sigla, u.sigla === "APP" ? "È un nome, non un aggettivo." : "È un aggettivo, non un nome.", false);
+    st.unitaOk.add(kU); giusto(u.sigla); st.sel.clear();
+    if (!unitaPendente(st.accGruppo, "acc")) st.accGruppo = null;
+    if (compFinito()) return avanza();
+    return ridisegnaTutto();
+  }
+  if (P() === "comp") {
+    const g = F.gruppi[st.gruppoSel];
+    const kU = F.unita.findIndex((u, j) => u.passo === "comp" && !st.unitaOk.has(j) && u.idx.every(i => g.includes(i)));
+    const u = F.unita[kU];
+    if (k !== canon(u.sigla)) return sbaglio(u.sigla, `La domanda è giusta, ma il tipo no: ${SIGLE[k].nome.toLowerCase()} non è quello che serve qui.`, false);
+    st.unitaOk.add(kU); giusto(u.sigla);
+    if (unitaPendente(st.gruppoSel, "acc")) st.accGruppo = st.gruppoSel;
+    st.gruppoSel = null; st.domandaScelta = null; st.sel.clear();
+    if (compFinito()) return avanza();
+    return ridisegnaTutto();
+  }
+}
+
+function sceltaDomanda(id) {
+  if (!attivo() || P() !== "comp" || st.gruppoSel === null) return;
+  const g = F.gruppi[st.gruppoSel];
+  const u = F.unita.find((x, j) => x.passo === "comp" && !st.unitaOk.has(j) && x.idx.every(i => g.includes(i)));
+  st.tentativi++;
+  if (id !== u.domanda) return sbaglio("domanda", `«${testoIdx(g)}» non risponde a questa domanda. Rileggi unendolo al predicato.`, false);
+  st.domandaScelta = id; st.ultimaAzione = Date.now();
+  chiudiFascia();
+  ridisegnaTutto();
+}
+
+function sottinteso() {
+  if (!attivo()) return;
+  const cmd = document.getElementById("comandi");
+  cmd.innerHTML = `<div class="etichetta-scelta">Quale persona?</div><div class="azioni">${["io", "tu", "lui/lei", "noi", "voi", "loro"].map(p =>
+    `<button class="chip" data-azione="persona" data-valore="${p}">${p}</button>`).join("")}</div>
+    <div class="azioni"><button data-azione="annullaSottinteso">← annulla</button></div>`;
+}
+
+function scegliPersona(p) {
+  st.tentativi++;
+  if (!F.sogg.sottinteso) return sbaglio("SOGG", "In questa frase il soggetto è scritto: cercalo tra le parole.", true);
+  if (p !== F.sogg.sottinteso) return sbaglio("sottinteso", `Il soggetto è sottinteso, ma la persona non è giusta: guarda il verbo «${testoIdx(F.pred.idx)}».`, false);
+  st.soggOk = true; giusto("SOGG");
+  if (!F.unita.some(u => u.passo === "sogg")) return avanza();
+  ridisegnaTutto();
+}
+
+function verificaBarre() {
+  if (!attivo()) return;
+  st.tentativi++;
+  const giuste = new Set(F.gruppi.slice(0, -1).map(g => g[g.length - 1]));
+  const ok = giuste.size === st.barre.size && [...giuste].every(x => st.barre.has(x));
+  if (!ok) {
+    const inPiu = [...st.barre].filter(x => !giuste.has(x));
+    const msg = inPiu.length ? `La barretta dopo «${parole[inPiu[0]]}» divide parole che lavorano insieme.` : "Manca almeno una barretta: c'è un gruppo che svolge una funzione diversa.";
+    return sbaglio("sintagma", msg, true);
+  }
+  giusto("sintagma"); avanza();
+}
+
+function avanza() {
+  st.passo++; st.sel.clear(); st.inizioPasso = Date.now(); st.ultimaAzione = Date.now();
+  registra("passo completato", "passo " + (st.passo - 1));
+  if (P() === "comp" && !F.unita.some(u => u.passo === "comp")) st.passo++;
+  ridisegnaTutto();
+}
+
+function ridisegnaTutto() { disegna(); }
+
+function concludi() {
+  st.finito = true; st.passo = sequenza().length + 1;
+  const secondi = Math.round((Date.now() - st.inizio - st.msPausa) / 1000);
+  document.getElementById("btnPausa").disabled = true;
+  registra("frase completata", secondi + " s");
+  riepiloghi.push({ frase: F.testo, secondi, acc: st.tentativi ? Math.round(st.giuste / st.tentativi * 100) : 100, err: Object.assign({}, st.err), comp: st.compensazioni, ora: new Date().toLocaleTimeString("it-IT") });
+  ridisegnaTutto();
+  const e = st.err;
+  const acc = st.tentativi ? Math.round(st.giuste / st.tentativi * 100) : 100;
+  apriFascia("ok", "Analisi completata", `<h3>Ottimo lavoro!</h3>
+    ${aiuti.tempo ? "" : `Tempo: <b>${Math.floor(secondi / 60)} min ${secondi % 60} s</b> · `}accuratezza <b>${acc}%</b><br>
+    Errori di procedura ${e.procedura} · risposte rapide ${e.fretta} · lapsus ${e.lapsus} · errori di concetto ${e.concetto} · compensazioni svolte ${st.compensazioni}
+    ${modo === "schermo" ? `<div style="margin-top:8px;font-weight:600">La tua analisi in colonna</div><div class="colonna" style="margin-left:0">${colonna().map(r => `<div>${r}</div>`).join("")}</div>` : ""}`);
+}
+
+/* =====================================================================
+   DIAGNOSI E UNITÀ DI COMPENSAZIONE
+   ===================================================================== */
+/* Per il lapsus contano le "famiglie" di concetti: PV e PN sono la stessa distinzione */
+function famiglia(c) { return (c === "PN" || c === "PV") ? "TIPO_PREDICATO" : c; }
+
+function giusto(concetto) {
+  st.giuste++; st.diFila = 0; giaCorretti[famiglia(CONCETTO_DI[concetto] || concetto)] = true;
+  st.ultimaAzione = Date.now(); chiudiFascia();
+  registra("risposta giusta", concetto);
+}
+
+function erroreProcedura(cosa, passo) {
+  st.err.procedura++; st.tentativi++;
+  apriFascia("avviso", "Errore di procedura", `<h3>Un passo alla volta</h3>Stai cercando di ${cosa}, che è il <b>passo ${passo}</b>. Prima completa il <b>passo ${st.passo}</b>, evidenziato nella procedura.
+    <div class="bottoni"><button data-azione="chiudiFascia">Ho capito</button></div>`);
+  registra("errore", "procedura");
+}
+
+/* Distingue: fretta (risposta rapida) · lapsus (concetto già usato bene) · concetto (mai padroneggiato) */
+function sbaglio(concetto, spiegazione, eVerifica) {
+  const c = CONCETTO_DI[concetto] || concetto;
+  const rif = eVerifica ? st.inizioPasso : st.ultimaAzione;
+  const dt = (Date.now() - rif) / 1000;
+  st.ultimaAzione = Date.now();
+  // tre errori di fila sulla stessa scelta: probabile "procedere per tentativi" (segnale per l'insegnante)
+  if (++st.diFila === 3) registra("segnale", "procede per tentativi", c);
+  if (!aiuti.tempo && dt < SOGLIA_FRETTA) {   // con l'aiuto "Senza tempo" la rapidità non viene valutata
+    st.err.fretta++;
+    apriFascia("avviso", "Risposta rapida", `<h3>Con calma</h3>Hai risposto in ${dt.toFixed(1)} secondi. Rileggi la frase e il passo della procedura prima di scegliere.
+      <div class="bottoni"><button data-azione="chiudiFascia">Riprova</button></div>`);
+    registra("errore", "fretta", c);
+  } else if (giaCorretti[famiglia(c)]) {
+    st.err.lapsus++;
+    const R = COMPENSAZIONE[c];
+    apriFascia("avviso", "Richiamo", `<h3>Ti ricordi?</h3>${spiegazione} Poco fa questo l'avevi usato bene: <b>${R ? R.titolo.toLowerCase() : ""}</b>.
+      ${R ? `<div class="esempio">${R.esempio}</div>` : ""}
+      <div class="bottoni"><button data-azione="chiudiFascia">Riprova</button>${R ? `<button data-azione="compensazione" data-valore="${c}">Rivedi la spiegazione</button>` : ""}</div>`);
+    registra("errore", "lapsus", c);
+  } else {
+    st.err.concetto++;
+    mostraCompensazione(c, spiegazione);
+    registra("errore", "concetto", c);
+  }
+  disegnaDialogo();
+}
+
+function mostraCompensazione(c, spiegazione) {
+  const R = COMPENSAZIONE[c];
+  if (!R) { apriFascia("errore", "Errore", spiegazione + `<div class="bottoni"><button data-azione="chiudiFascia">Riprova</button></div>`); return; }
+  apriFascia("errore", "Errore di concetto", `<h3>${R.titolo}</h3>${spiegazione ? `<div>${spiegazione}</div>` : ""}<div style="margin-top:4px">${R.testo}</div>
+    <div class="esempio"><b>Esempio:</b> ${R.esempio}</div>
+    <div class="bottoni"><button data-azione="chiudiFascia">Riprova</button><button class="primario" data-azione="controVerifica" data-valore="${c}">Mettiti alla prova con una frase nuova</button></div>
+    <div id="cv"></div>`);
+}
+
+function controVerifica(c) {
+  const R = COMPENSAZIONE[c];
+  document.getElementById("cv").innerHTML = `<div style="margin-top:8px;font-weight:600">${R.domanda}</div>` +
+    R.opzioni.map((o, k) => `<button class="opz" data-azione="rispostaCV" data-valore="${c}" data-indice="${k}">${o}</button>`).join("") + `<div class="esito" id="cvEsito"></div>`;
+}
+
+function rispostaCV(c, k, btn) {
+  const R = COMPENSAZIONE[c], e = document.getElementById("cvEsito");
+  if (k === R.giusta) {
+    st.compensazioni++; e.style.color = "var(--verde)";
+    e.innerHTML = `Giusto! Ora torna alla frase e riprova. <button class="verde" data-azione="chiudiFascia">Torna alla frase</button>`;
+    registra("compensazione superata", c);
+  } else {
+    btn.disabled = true; e.style.color = "var(--rosso)"; e.textContent = "Non ancora: rileggi la spiegazione e l'esempio, poi riprova.";
+    registra("compensazione: risposta errata", c);
+  }
+}
+
+function apriFascia(tipo, titolo, html) {
+  const f = document.getElementById("fascia");
+  f.className = "fascia aperta " + tipo;
+  document.getElementById("fasciaTitolo").textContent = "Unità di Compensazione · " + titolo;
+  document.getElementById("fasciaContenuto").innerHTML = html;
+}
+function chiudiFascia() {
+  const f = document.getElementById("fascia");
+  f.className = "fascia";
+  document.getElementById("fasciaTitolo").textContent = "Unità di Compensazione · nessun avviso";
+  document.getElementById("fasciaContenuto").innerHTML = "";
+  if (st) { st.inizioPasso = Date.now(); st.ultimaAzione = Date.now(); }
+}
+
+function suggerisci(t) { document.getElementById("suggerimento").textContent = t; }
+
+/* =====================================================================
+   AVVIO, PAUSA, PANNELLI, VISITA GUIDATA
+   ===================================================================== */
+function mostraCopertura(titolo, testo, etichetta, azione) {
+  document.getElementById("copTitolo").textContent = titolo;
+  document.getElementById("copTesto").textContent = testo;
+  const b = document.getElementById("copBottone"); b.textContent = etichetta; b.dataset.azione = azione;
+  document.getElementById("copertura").classList.remove("nascosto");
+}
+function inizia() {
+  st.avviato = true; st.inizio = st.inizioPasso = st.ultimaAzione = Date.now();
+  document.getElementById("copertura").classList.add("nascosto");
+  document.getElementById("btnPausa").disabled = false;
+  registra("avvio", "");
+}
+function pausa() {
+  if (!st.avviato || st.finito) return;
+  if (!st.inPausa) {
+    st.inPausa = true; st.inizioPausa = Date.now();
+    document.getElementById("btnPausa").textContent = "▶ Riprendi";
+    mostraCopertura("In pausa", "Il tempo è fermo. Quando sei pronto, riprendi.", "▶ RIPRENDI", "pausa");
+  } else {
+    const d = Date.now() - st.inizioPausa; st.inPausa = false; st.msPausa += d; st.inizioPasso += d; st.ultimaAzione += d;
+    document.getElementById("btnPausa").textContent = "⏸ Pausa";
+    document.getElementById("copertura").classList.add("nascosto");
+  }
+}
+
+/* Schermo: 5 passi, la colonna compare nel resoconto. Quaderno: 6 passi, con la riscrittura in colonna. */
+function impostaModo(m) {
+  modo = m === "quaderno" ? "quaderno" : "schermo";
+  document.getElementById("modoSchermo").classList.toggle("attivo", modo === "schermo");
+  document.getElementById("modoQuaderno").classList.toggle("attivo", modo === "quaderno");
+  if (!inGuida) try { localStorage.setItem("sim-modo", modo); } catch (e) {}
+  carica(iFrase);
+}
+
+/* Opzioni dell'insegnante: livello (quali complementi e quali frasi) e aiuti */
+function applicaOpzioni(ricarica) {
+  ATTIVE = FRASI.filter(f => (f.liv || 1) <= livello);
+  document.querySelectorAll("[data-azione='livello']").forEach(b => b.classList.toggle("attivo", Number(b.dataset.valore) === livello));
+  document.querySelectorAll("[data-azione='profilo']").forEach(b => b.classList.toggle("attivo", b.dataset.valore === profilo));
+  document.getElementById("notaProfilo").textContent = PROFILI[profilo].nota;
+  document.querySelectorAll("input[data-azione='aiuto']").forEach(c => { c.checked = aiuti[c.dataset.valore]; });
+  document.getElementById("linkBox").classList.add("nascosto"); document.getElementById("linkNota").textContent = "";
+  document.body.classList.toggle("facile", aiuti.lettura);
+  document.getElementById("btnAscolta").classList.toggle("nascosto", !aiuti.lettura || !window.speechSynthesis);
+  const n = Object.values(aiuti).filter(Boolean).length;
+  document.getElementById("btnOpzioni").textContent = "⚙ Opzioni" + (n ? ` · ${n} aiut${n === 1 ? "o attivo" : "i attivi"}` : "");
+  if (!inGuida) try { localStorage.setItem("sim-opz", JSON.stringify({ livello, aiuti, profilo })); } catch (e) {}
+  if (!ricarica) return;
+  // "treno in corsa": se la frase resta disponibile, l'analisi continua dal punto in cui si trova
+  const k = ATTIVE.indexOf(F);
+  if (k < 0) return carica(Math.min(iFrase, ATTIVE.length - 1));
+  iFrase = k; testata();
+  const giuste = new Set(F.gruppi.slice(0, -1).map(g => g[g.length - 1]));
+  if (aiuti.divisione && passoPrima === "div") { st.barre = giuste; st.passo = 1; }
+  else if (st.finito) st.passo = sequenza().length + 1;
+  else st.passo = sequenza().indexOf(passoPrima) + 1;
+  st.altre = false;
+  disegna();
+}
+let passoPrima = "div";   // il passo in corso prima di un cambio di opzioni
+function testata() {
+  document.getElementById("fraseN").textContent = `Analisi logica · frase ${iFrase + 1} di ${ATTIVE.length}`;
+  document.getElementById("btnPrec").disabled = iFrase === 0;
+  document.getElementById("btnSucc").disabled = iFrase === ATTIVE.length - 1;
+}
+function leggiOpzioni() {
+  try { const o = JSON.parse(localStorage.getItem("sim-opz") || "{}"); if (o.livello) livello = o.livello; if (PROFILI[o.profilo]) profilo = o.profilo; Object.assign(aiuti, o.aiuti || {}); } catch (e) {}
+  // il link dell'insegnante ha la precedenza: ?livello=base|intermedio|completo&aiuti=divisione,guida,ridotte,tempo,lettura
+  const q = new URLSearchParams(location.search);
+  const L = { base: 1, intermedio: 2, completo: 3 }[q.get("livello")];
+  if (L) livello = L;
+  if (q.has("aiuti")) { const scelti = q.get("aiuti").split(","); Object.keys(aiuti).forEach(k => { aiuti[k] = scelti.includes(k); }); }
+  if (PROFILI[q.get("profilo")]) profilo = q.get("profilo");
+  // link per la classe: gli alunni non vedono le opzioni
+  if (q.get("classe") === "1") { document.getElementById("btnOpzioni").classList.add("nascosto"); document.querySelector("header .modo").classList.add("nascosto"); }
+}
+/* MODALITÀ INSEGNANTE: il link porta con sé grammatica, livello, modalità e aiuti */
+function linkClasse() {
+  const a = Object.keys(aiuti).filter(k => aiuti[k]).join(",");
+  const url = location.href.split(/[?#]/)[0] + `?profilo=${profilo}&livello=${["", "base", "intermedio", "completo"][livello]}&modo=${modo}&aiuti=${a}&classe=1`;
+  const box = document.getElementById("linkBox"), nota = document.getElementById("linkNota");
+  box.value = url; box.classList.remove("nascosto"); box.select();
+  nota.textContent = "";
+  if (navigator.clipboard) navigator.clipboard.writeText(url).then(() => { nota.textContent = "Copiato ✓"; }, () => {});
+}
+function ascolta() {
+  if (!window.speechSynthesis) return;
+  speechSynthesis.cancel();
+  const v = new SpeechSynthesisUtterance(F.testo); v.lang = "it-IT"; v.rate = 0.8;
+  speechSynthesis.speak(v);
+}
+
+function pannello(zona, chiuso) {
+  document.getElementById(zona === "proc" ? "zonaProc" : "zonaLeg").classList.toggle("chiusa", chiuso);
+  document.getElementById("main").classList.toggle(zona === "proc" ? "proc-chiusa" : "leg-chiusa", chiuso);
+  try { localStorage.setItem("sim-" + zona, chiuso ? "1" : "0"); } catch (e) {}
+}
+
+const TOUR = [
+  { id: "zonaProc", t: "Qui c'è la <b>procedura</b>: i passi dell'analisi. È aperto solo il passo che stai facendo; puoi ridurre il riquadro con ‹." },
+  { id: "zonaDialogo", t: "Qui c'è il <b>dialogo</b>: la consegna e la frase. Clicca sulle parole, poi scegli la sigla: <b>si scrive sopra la parola</b>, come sul quaderno." },
+  { id: "zonaLeg", t: "Qui c'è la <b>legenda</b>: mostra solo le sigle che servono in questo passo, e la particolarità da ricordare." },
+  { id: "fascia", t: "Qui compare l'<b>Unità di Compensazione</b> quando qualcosa non va: ti spiega l'errore e puoi metterti alla prova con una frase nuova." }
+];
+let tourPasso = -1;
+function tour(k) {
+  document.querySelectorAll(".evidenzia").forEach(e => e.classList.remove("evidenzia"));
+  const vecchio = document.getElementById("fumetto"); if (vecchio) vecchio.remove();
+  tourPasso = k;
+  if (k < 0 || k >= TOUR.length) { try { localStorage.setItem("sim-tour", "1"); } catch (e) {} return; }
+  const el = document.getElementById(TOUR[k].id);
+  el.classList.add("evidenzia");
+  const r = el.getBoundingClientRect();
+  const f = document.createElement("div"); f.className = "fumetto"; f.id = "fumetto";
+  f.innerHTML = `<p>${TOUR[k].t}</p><div style="display:flex;justify-content:space-between;align-items:center">
+    <span class="conta">${k + 1} di ${TOUR.length}</span>
+    <span><button data-azione="tourFine">Chiudi</button> <button class="primario" data-azione="tourAvanti">${k === TOUR.length - 1 ? "Fine" : "Avanti"}</button></span></div>`;
+  document.body.appendChild(f);
+  const fr = f.getBoundingClientRect();
+  let top = r.bottom + 10, left = r.left;
+  if (top + fr.height > innerHeight) top = Math.max(10, r.top - fr.height - 10);
+  if (left + fr.width > innerWidth) left = innerWidth - fr.width - 10;
+  f.style.top = Math.max(10, top) + "px"; f.style.left = Math.max(10, left) + "px";
+}
+
+function registra(evento, dettaglio, concetto) {
+  registro.push({ ora: new Date().toLocaleTimeString("it-IT"), frase: F ? F.testo : "", passo: st && PASSI_DEF[P()] ? PASSI_DEF[P()].t : "", evento, dettaglio: dettaglio || "", concetto: concetto || "" });
+}
+
+/* =====================================================================
+   SCATOLA NERA: il registro per l'insegnante (riepilogo, concetti da riprendere, cronologia, CSV)
+   ===================================================================== */
+const riepiloghi = [];
+function nomeConcetto(c) { return COMPENSAZIONE[c] ? COMPENSAZIONE[c].titolo : SIGLE[c] ? SIGLE[c].nome : c; }
+function apriScatola() {
+  const perConcetto = {};
+  registro.filter(r => r.evento === "errore" && r.concetto).forEach(r => {
+    const o = perConcetto[r.concetto] || (perConcetto[r.concetto] = { fretta: 0, lapsus: 0, concetto: 0 });
+    if (o[r.dettaglio] !== undefined) o[r.dettaglio]++;
+  });
+  const chiavi = Object.keys(perConcetto).sort((a, b) => perConcetto[b].concetto - perConcetto[a].concetto);
+  const tentativi = registro.filter(r => r.evento === "segnale");
+  const superate = registro.filter(r => r.evento === "compensazione superata").length;
+  let h = `<h3>Scatola nera · registro per l'insegnante</h3>
+    <p class="nota-sn">Sessione su questo dispositivo, dal momento in cui la pagina è stata aperta. ${PROFILI[profilo].nome} · livello ${["", "base", "intermedio", "completo"][livello]} · modalità ${modo}${Object.keys(aiuti).some(k => aiuti[k]) ? " · aiuti: " + Object.keys(aiuti).filter(k => aiuti[k]).join(", ") : ""}</p>`;
+  h += `<h4>Frasi completate</h4>` + (riepiloghi.length ? `<table><tr><th>Frase</th><th>Tempo</th><th>Accuratezza</th><th>Procedura</th><th>Fretta</th><th>Lapsus</th><th>Concetto</th><th>Compens.</th></tr>${riepiloghi.map(r =>
+    `<tr><td>${r.frase}</td><td>${Math.floor(r.secondi / 60)}′ ${r.secondi % 60}″</td><td>${r.acc}%</td><td>${r.err.procedura}</td><td>${r.err.fretta}</td><td>${r.err.lapsus}</td><td>${r.err.concetto}</td><td>${r.comp}</td></tr>`).join("")}</table>` : `<p class="nota-sn">Nessuna frase completata finora.</p>`);
+  h += `<h4>Concetti da riprendere</h4>` + (chiavi.length ? `<table><tr><th>Concetto</th><th>Errori di concetto</th><th>Lapsus</th><th>Risposte rapide</th></tr>${chiavi.map(c =>
+    `<tr><td>${nomeConcetto(c)}</td><td>${perConcetto[c].concetto}</td><td>${perConcetto[c].lapsus}</td><td>${perConcetto[c].fretta}</td></tr>`).join("")}</table>` : `<p class="nota-sn">Nessun errore registrato.</p>`);
+  h += `<p>Unità di compensazione superate: <b>${superate}</b>${tentativi.length ? ` · <b style="color:var(--arancio)">Segnale: procede per tentativi</b> (${tentativi.length} volt${tentativi.length === 1 ? "a" : "e"}: ${[...new Set(tentativi.map(t => nomeConcetto(t.concetto)))].join(", ")})` : ""}</p>`;
+  h += `<details><summary>Cronologia completa (${registro.length} eventi) ▸</summary><table><tr><th>Ora</th><th>Frase</th><th>Passo</th><th>Evento</th><th>Dettaglio</th><th>Concetto</th></tr>${registro.map(r =>
+    `<tr><td>${r.ora}</td><td>${r.frase}</td><td>${r.passo}</td><td>${r.evento}</td><td>${r.dettaglio}</td><td>${r.concetto ? nomeConcetto(r.concetto) : ""}</td></tr>`).join("")}</table></details>`;
+  h += `<div class="bottoni-sn"><button data-azione="csv">⬇ Scarica (CSV per Excel)</button><button data-azione="stampa">🖨 Stampa</button><button class="primario" data-azione="chiudiScatola">Chiudi</button></div>`;
+  document.getElementById("scatolaDentro").innerHTML = h;
+  document.getElementById("scatola").classList.remove("nascosto");
+}
+function scaricaCSV() {
+  const q = v => '"' + String(v).replace(/"/g, '""') + '"';
+  const righe = [["Ora", "Frase", "Passo", "Evento", "Dettaglio", "Concetto"].join(";")].concat(
+    registro.map(r => [r.ora, r.frase, r.passo, r.evento, r.dettaglio, r.concetto ? nomeConcetto(r.concetto) : ""].map(q).join(";")));
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(new Blob(["﻿" + righe.join("\r\n")], { type: "text/csv;charset=utf-8" }));
+  a.download = "scatola-nera.csv"; document.body.appendChild(a); a.click(); a.remove();
+}
+
+/* =====================================================================
+   COLLEGAMENTO DEI COMANDI (un solo ascoltatore: funziona anche nei siti che bloccano i comandi in linea)
+   ===================================================================== */
+document.addEventListener("click", e => {
+  if (!e.target.closest("#btnAiuto")) document.getElementById("menuAiuto").classList.add("nascosto");
+  const el = e.target.closest("[data-azione]");
+  if (!el || el.disabled || el.tagName === "INPUT") return;
+  const v = el.dataset.valore;
+  switch (el.dataset.azione) {
+    case "parola": clicParola(Number(v)); break;
+    case "spazio": clicSpazio(Number(v)); break;
+    case "sigla": sceltaSigla(v); break;
+    case "domanda": sceltaDomanda(v); break;
+    case "cambiaDomanda": st.domandaScelta = null; ridisegnaTutto(); break;
+    case "sottinteso": sottinteso(); break;
+    case "persona": scegliPersona(v); break;
+    case "annullaSottinteso": disegnaDialogo(); break;
+    case "verificaBarre": verificaBarre(); break;
+    case "colonnaOk": avanza(); break;
+    case "concludi": concludi(); break;
+    case "riprova": carica(iFrase); break;
+    case "frase": { const n = iFrase + Number(v); if (n >= 0 && n < ATTIVE.length) carica(n); break; }
+    case "altre": st.altre = v === "1"; ridisegnaTutto(); break;
+    case "opzioni": document.getElementById("opzioni").classList.toggle("nascosto"); break;
+    case "livello": passoPrima = P(); livello = Number(v); applicaOpzioni(true); break;
+    case "ascolta": ascolta(); break;
+    case "profilo": passoPrima = P(); profilo = v; applicaOpzioni(true); break;
+    case "link": linkClasse(); break;
+    case "scatola": apriScatola(); break;
+    case "chiudiScatola": document.getElementById("scatola").classList.add("nascosto"); break;
+    case "csv": scaricaCSV(); break;
+    case "stampa": {
+      const reg = !document.getElementById("scatola").classList.contains("nascosto");
+      document.body.classList.toggle("stampa-scatola", reg); window.print(); document.body.classList.remove("stampa-scatola"); break;
+    }
+    case "guida": window.open(location.href.split(/[?#]/)[0] + "?guida=1", "_blank"); break;
+    case "inizia": inizia(); break;
+    case "pausa": pausa(); break;
+    case "chiudiFascia": chiudiFascia(); break;
+    case "compensazione": mostraCompensazione(v, ""); break;
+    case "controVerifica": controVerifica(v); break;
+    case "rispostaCV": rispostaCV(v, Number(el.dataset.indice), el); break;
+    case "chiudiProc": pannello("proc", true); break;
+    case "apriProc": pannello("proc", false); break;
+    case "chiudiLeg": pannello("leg", true); break;
+    case "apriLeg": pannello("leg", false); break;
+    case "apriPasso": el.classList.toggle("aperto"); break;
+    case "modo": impostaModo(v); break;
+    case "tour": tour(0); break;
+    // con il link per la classe l'alunno riceve subito le indicazioni veloci
+    case "aiuto-menu": if (inClasse) tour(0); else document.getElementById("menuAiuto").classList.toggle("nascosto"); break;
+    case "tourAvanti": tour(tourPasso + 1); break;
+    case "tourFine": tour(-1); break;
+  }
+});
+document.addEventListener("change", e => {
+  const a = e.target.closest("input[data-azione='aiuto']");
+  if (a) { passoPrima = P(); aiuti[a.dataset.valore] = a.checked; applicaOpzioni(true); return; }
+  const el = e.target.closest("input[data-azione='spunta']");
+  if (!el) return;
+  const k = Number(el.dataset.valore);
+  el.checked ? st.controlli.add(k) : st.controlli.delete(k);
+  const b = document.querySelector("[data-azione='concludi']"); if (b) b.disabled = st.controlli.size < 4;
+});
+window.addEventListener("error", e => {
+  const b = document.getElementById("erroreTecnico");
+  b.textContent = "Si è verificato un problema tecnico: " + e.message + " (riga " + e.lineno + ")";
+  b.classList.remove("nascosto");
+});
+
+/* =====================================================================
+   GUIDA PER L'INSEGNANTE (?guida=1)
+   Usa la schermata vera, messa in una situazione di esempio, e numera i comandi:
+   se l'interfaccia cambia, la guida cambia con lei.
+   ===================================================================== */
+const GUIDA = [
+  { sel: "header .modo", pos: "prima", t: "Schermo / Quaderno", d: "Schermo: l'alunno lavora solo al computer (5 passi). Quaderno: fa prima l'analisi sul quaderno e la riporta qui; si aggiunge il passo «Riscrivi in colonna» (6 passi)." },
+  { sel: "#btnPrec", pos: "prima", t: "◀ Frase / Frase ▶", d: "Passano alla frase precedente o successiva. Le frasi disponibili dipendono dal livello scelto." },
+  { sel: "#btnPausa", t: "Pausa", d: "Ferma il tempo e copre la frase. Ogni frase parte solo quando l'alunno preme INIZIA." },
+  { sel: "[data-azione='scatola']", t: "Registro (scatola nera)", d: "Per l'insegnante: frasi completate, tempi, errori per tipo, concetti da riprendere, segnale «procede per tentativi». Si può stampare o scaricare per Excel. Vale per la sessione in corso." },
+  { sel: "#btnOpzioni", t: "Opzioni", d: "Apre e chiude la barra con modello, livello e aiuti. Chiusa, ricorda quanti aiuti sono attivi. Le scelte si possono cambiare anche a esercizio iniziato, senza perdere il lavoro." },
+  { sel: "#btnAiuto", t: "? Aiuto", d: "Apre due scelte. Indicazioni veloci: quattro fumetti che presentano le zone dello schermo. Guida completa da stampare: questa guida. Con il link per la classe, l'alunno riceve direttamente le indicazioni veloci." },
+  { sel: ".opzioni .gruppo-opz:nth-child(1) .titolo-opz", t: "Grammatica", d: "Tre modelli di classificazione dei complementi (A, B, C). La riga accanto descrive che cosa unisce o separa il modello scelto: scegliete quello più vicino al libro di testo." },
+  { sel: ".opzioni .gruppo-opz:nth-child(2) .titolo-opz", t: "Livello", d: "Base: i complementi principali (7 domande). Intermedio: si aggiungono, tra gli altri, predicativi, agente, materia, argomento. Completo: tutti, con i complementi minori dietro «Altre domande»." },
+  { sel: ".opzioni .gruppo-opz:nth-child(3) .titolo-opz", t: "Aiuti (DSA e BES)", d: "Divisione già fatta: la frase arriva con le barrette. Domande guida: al posto della sigla, nome per esteso e domanda. Meno scelte: tre domande e due sigle. Senza tempo: la rapidità non è valutata. Lettura facilitata: carattere grande e ascolto della frase." },
+  { sel: "[data-azione='link']", t: "Link per la classe", d: "Crea un indirizzo con le scelte fatte (modello, livello, modalità, aiuti). Chi lo apre trova tutto impostato e non vede le Opzioni. Si possono preparare link diversi, per esempio uno con gli aiuti." },
+  { sel: "#zonaProc h2", t: "Procedura", d: "I passi dell'analisi, sempre nello stesso ordine. In giallo il passo in corso, in verde quelli completati. Non si può saltare un passo. Con ‹ il riquadro si riduce." },
+  { sel: "#consegna", t: "Consegna", d: "Dice che cosa fare in questo momento: una sola richiesta alla volta." },
+  { sel: "#riga", pos: "prima", t: "La frase", d: "Si lavora direttamente sulle parole. Passo 1: un clic tra due parole mette la barretta. Poi: un clic su una parola seleziona il suo gruppo. La sigla scelta si scrive sopra la parola, come sul quaderno; ciò che è già analizzato diventa grigio." },
+  { sel: "#comandi", t: "Le domande", d: "Per ogni complemento l'alunno sceglie prima la domanda a cui risponde, poi il tipo: compaiono solo le sigle che rispondono a quella domanda." },
+  { sel: "[data-azione='altre']", t: "Altre domande", d: "Solo al livello Completo: apre le domande dei complementi minori (concessivo, esclusione, sostituzione, limitazione, paragone…)." },
+  { sel: "#zonaLeg h2", t: "Legenda", d: "Mostra solo le sigle utili nel passo in corso e una particolarità da ricordare. «Tutte le sigle» apre l'elenco completo. Con › il riquadro si riduce." },
+  { sel: "#fasciaTitolo", t: "Unità di Compensazione", d: "Si apre solo dopo un errore e ne distingue il tipo. Risposta rapida: invito alla calma. Richiamo: errore su un concetto già usato bene (lapsus). Errore di concetto: spiegazione ed esempio. Errore di procedura: passo fuori ordine." },
+  { sel: "#fasciaContenuto .bottoni", t: "Riprova / Mettiti alla prova", d: "Dopo la spiegazione l'alunno può tornare alla frase oppure verificare di aver capito con una frase nuova (contro-verifica)." }
+];
+/* La filosofia di fondo, in otto schede */
+const PERCHE = [
+  { t: "1 · Un algoritmo, non una regola da ricordare", d: "Chi sa fare l'analisi logica compie sempre le stesse operazioni mentali, nello stesso ordine. Il Simulatore le rende visibili e le fa percorrere una alla volta (Landa): l'alunno non impara «la risposta», impara il procedimento." },
+  { t: "2 · L'errore è un'informazione", d: "Non tutti gli errori sono uguali (Reason). Il Simulatore distingue la risposta data in fretta, il lapsus su un concetto che l'alunno ha già usato bene, l'errore di concetto vero e proprio e l'errore di procedura. A ogni tipo corrisponde una risposta diversa." },
+  { t: "3 · La compensazione, subito", d: "Quando manca un concetto, il percorso si ferma e si apre una breve unità mirata su quel solo concetto: spiegazione, esempio, prova con una frase nuova. Poi si torna alla frase. La lacuna si colma nel momento in cui si manifesta, non il giorno della verifica." },
+  { t: "4 · La torre di controllo", d: "Come un volo è seguito da terra, così l'apprendimento è seguito da «sonde» poste negli snodi cruciali: lacune, tempi, esitazioni, tipi di errore, ricorso alle unità di recupero. Servono a guidare l'alunno mentre lavora e a mostrare all'insegnante come ragiona, non solo che cosa ha sbagliato." },
+  { t: "5 · La scatola nera", d: "Gli stessi dati, raccolti su molti alunni, dicono come funziona lo strumento: quali frasi e quali concetti producono più errori, quali spiegazioni non bastano. Servono a rivedere il materiale didattico sulla base di riscontri, non di impressioni. Il Registro si scarica per questo." },
+  { t: "6 · Poche cose alla volta", d: "L'attenzione regge pochi elementi insieme (Miller) e si disperde se deve saltare da un punto all'altro (Sweller). Per questo c'è una sola richiesta alla volta, le sigle si scrivono sulla frase e non in una tabella a parte, ciò che è risolto passa sullo sfondo, e il resto sta dietro bottoni che si aprono solo quando servono." },
+  { t: "7 · Lo schermo e il quaderno", d: "Il computer non sostituisce la scrittura a mano. Nella modalità Quaderno l'alunno fa l'analisi sulla carta e usa lo schermo come guida e come controllo; nella modalità Schermo lavora interamente al computer. Sceglie l'insegnante." },
+  { t: "8 · Gli aiuti, non un percorso a parte", d: "Gli alunni con DSA o BES fanno lo stesso esercizio dei compagni, con gli stessi passi. Cambia il sostegno: frase già divisa, domande guida, meno scelte, nessuna pressione del tempo, lettura facilitata. Gli aiuti si attivano uno per uno e si possono togliere quando non servono più." }
+];
+function preparaGuida() {
+  document.body.classList.add("guida");
+  livello = 3; profilo = "a"; Object.keys(aiuti).forEach(k => { aiuti[k] = false; });
+  modo = "schermo"; applicaOpzioni(false);
+  document.getElementById("modoSchermo").classList.add("attivo"); document.getElementById("modoQuaderno").classList.remove("attivo");
+  document.getElementById("opzioni").classList.remove("nascosto"); document.getElementById("btnOpzioni").classList.remove("nascosto");
+  // situazione di esempio: prima frase, passo dei complementi, un gruppo selezionato, un errore di concetto
+  carica(0); inizia();
+  st.barre = new Set(F.gruppi.slice(0, -1).map(g => g[g.length - 1]));
+  st.predOk = st.soggOk = true; st.unitaOk.add(0); st.unitaOk.add(1);
+  st.passo = sequenza().indexOf("comp") + 1; st.gruppoSel = 2; st.sel = new Set(F.gruppi[2]);
+  disegna();
+  mostraCompensazione("C_CAUSA", "");
+  GUIDA.forEach((v, k) => {
+    const el = document.querySelector(v.sel); if (!el) return;
+    const b = document.createElement("span"); b.className = "num"; b.textContent = k + 1;
+    v.pos === "prima" ? el.insertAdjacentElement("beforebegin", b) : el.insertAdjacentElement("afterbegin", b);
+  });
+  const testa = document.createElement("div"); testa.id = "guidaTesta";
+  testa.innerHTML = `<h1>Simulatore · Guida per l'insegnante</h1><p>Prima il perché, poi il come: la schermata più sotto è quella vera, ferma su un esempio, e i numeri rimandano alle spiegazioni.</p>
+    <button class="primario solo-schermo" data-azione="stampa">🖨 Stampa la guida</button>`;
+  document.body.insertBefore(testa, document.querySelector("header"));
+  const perche = document.createElement("section"); perche.id = "guidaPerche";
+  perche.innerHTML = `<h2>Perché è fatto così</h2>
+    <p class="intro">Il Simulatore non è un eserciziario che dice «giusto» o «sbagliato». È un ambiente che accompagna l'alunno lungo le operazioni mentali di chi sa fare l'analisi logica, osserva come lavora e interviene nel punto in cui il ragionamento si inceppa.</p>
+    <div class="carte">${PERCHE.map(p => `<div class="carta"><b>${p.t}</b><span>${p.d}</span></div>`).join("")}</div>
+    <p class="fonti">Il modello è descritto in M. Bellagente, <i>E-learning e creazione della conoscenza</i> (FrancoAngeli, 2006), <i>Evidenze Nascoste</i> (2021) e <i>Creare conoscenza</i> (2026).</p>
+    <h2 class="titolo-schermata">La schermata</h2>`;
+  document.body.insertBefore(perche, document.querySelector("header"));
+  const elenco = document.createElement("section"); elenco.id = "guidaElenco";
+  elenco.innerHTML = `<h2>I comandi, uno per uno</h2><ol>${GUIDA.map((v, k) => `<li><span class="num">${k + 1}</span><b>${v.t}.</b> ${v.d}</li>`).join("")}</ol>`;
+  document.body.appendChild(elenco);
+}
+
+/* Avvio */
+try { if (localStorage.getItem("sim-proc") === "1") pannello("proc", true); if (localStorage.getItem("sim-leg") === "1") pannello("leg", true); } catch (e) {}
+leggiOpzioni(); applicaOpzioni(false);
+let modoSalvato = "schermo"; try { modoSalvato = localStorage.getItem("sim-modo") || "schermo"; } catch (e) {}
+modoSalvato = new URLSearchParams(location.search).get("modo") || modoSalvato;
+impostaModo(modoSalvato);
+let primaVolta = true; try { primaVolta = localStorage.getItem("sim-tour") !== "1"; } catch (e) {}
+if (inGuida) preparaGuida();
+else if (primaVolta) setTimeout(() => tour(0), 400);
+</script>
+</body>
+</html>
