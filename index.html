@@ -224,6 +224,35 @@
   .firma a { color: var(--tenue); }
 
   #erroreTecnico { background: var(--rosso); color: #fff; padding: 8px 16px; font-size: .9em; }
+
+  /* ---------- Modalità LIM: la frase si legge dal fondo dell'aula, i comandi si toccano con il dito ---------- */
+  #btnLim.attivo { background: var(--blu); color: #fff; border-color: var(--blu); }
+  body.lim { font-size: 20px; }
+  body.lim header { padding: 8px 14px; gap: 8px; font-size: 17px; }
+  body.lim header button, body.lim .modo button { min-height: 46px; padding: 6px 12px; font-size: 1em; }
+  body.lim main { grid-template-columns: 290px minmax(0, 1fr) 270px; gap: 16px; }
+  body.lim main.proc-chiusa { grid-template-columns: 56px minmax(0, 1fr) 270px; }
+  body.lim main.leg-chiusa { grid-template-columns: 290px minmax(0, 1fr) 56px; }
+  body.lim main.proc-chiusa.leg-chiusa { grid-template-columns: 56px minmax(0, 1fr) 56px; }
+  body.lim .zona h2 button { font-size: 1.6em; padding: 0 10px; }
+  body.lim .consegna { font-size: 1.15em; }
+  body.lim .frase-box { padding: 40px 14px 28px; }
+  body.lim .riga { row-gap: 40px; }
+  body.lim .tok { padding: 0 4px; }
+  body.lim .tok .sigla { font-size: 1.1rem; height: 1.6rem; }
+  body.lim .tok .parola { font-size: 2.8rem; padding: 6px 8px 8px; border-bottom-width: 5px; }
+  body.lim .gap { width: 34px; padding-bottom: 12px; }
+  body.lim .gap span { font-size: 2.8rem; color: #e3e6ec; }   /* sulla LIM non c'è il passaggio del mouse: i punti dove mettere la barretta restano visibili */
+  body.lim .gap.barra span { color: var(--rosso); }
+  body.lim .chip { padding: 12px 22px; font-size: 1.05em; }
+  body.lim .azioni { gap: 12px; }
+  body.lim .suggerimento { font-size: .95em; }
+  body.lim .fascia { font-size: 1.05em; }
+  body.lim .fascia .opz { max-width: 760px; padding: 12px 16px; }
+  body.lim .fascia .bottoni button, body.lim .copertura button { min-height: 50px; padding: 10px 22px; }
+  body.lim .colonna { max-width: 760px; }
+  body.lim .firma { display: none; }
+  body.lim.facile .tok .parola { font-size: 3rem; }
 </style>
 </head>
 <body>
@@ -235,6 +264,7 @@
   <span class="modo" title="Modalità di lavoro">
     <button data-azione="modo" data-valore="schermo" id="modoSchermo" class="attivo">Schermo</button><button data-azione="modo" data-valore="quaderno" id="modoQuaderno">Quaderno</button>
   </span>
+  <button data-azione="lim" id="btnLim" title="Modalità classe: caratteri grandi per la LIM, senza valutazione della rapidità">🖥 LIM</button>
   <span class="spazio"></span>
   <button data-azione="frase" data-valore="-1" id="btnPrec" title="Frase precedente">◀ Frase</button>
   <button data-azione="frase" data-valore="1" id="btnSucc" title="Frase successiva">Frase ▶</button>
@@ -438,7 +468,17 @@ const DOMANDE = [
 const inGuida = new URLSearchParams(location.search).get("guida") === "1";
 const inClasse = new URLSearchParams(location.search).get("classe") === "1";
 let livello = 1;
-const aiuti = { divisione: false, guida: false, ridotte: false, tempo: false, lettura: false };
+/* MODALITÀ LIM: la classe lavora insieme sulla lavagna; caratteri grandi, rapidità non valutata, consegne al plurale */
+let lim = false;
+function pronti() { return lim ? "Leggete la frase insieme: quando la classe è pronta, premete INIZIA." : "Quando sei pronto a concentrarti, premi INIZIA."; }
+function impostaLim(on) {
+  lim = !!on;
+  document.body.classList.toggle("lim", lim);
+  document.getElementById("btnLim").classList.toggle("attivo", lim);
+  if (!inGuida) try { localStorage.setItem("sim-lim", lim ? "1" : "0"); } catch (e) {}
+  if (st && !st.avviato) document.getElementById("copTesto").textContent = pronti();
+}
+const aiuti ={ divisione: false, guida: false, ridotte: false, tempo: false, lettura: false };
 function sigleDi(d) { return [...new Set(d.sigle.filter(inUso).map(canon))]; }
 
 const FRASI = [
@@ -593,7 +633,7 @@ function carica(i) {
   document.getElementById("btnPrec").disabled = i === 0;
   document.getElementById("btnSucc").disabled = i === ATTIVE.length - 1;
   document.getElementById("btnPausa").disabled = true;
-  mostraCopertura(`Frase ${i + 1} di ${ATTIVE.length}`, "Quando sei pronto a concentrarti, premi INIZIA.", "▶ INIZIA", "inizia");
+  mostraCopertura(`Frase ${i + 1} di ${ATTIVE.length}`, pronti(), "▶ INIZIA", "inizia");
   chiudiFascia();
   disegna();
   registra("frase caricata", F.testo);
@@ -947,7 +987,7 @@ function concludi() {
   const e = st.err;
   const acc = st.tentativi ? Math.round(st.giuste / st.tentativi * 100) : 100;
   apriFascia("ok", "Analisi completata", `<h3>Ottimo lavoro!</h3>
-    ${aiuti.tempo ? "" : `Tempo: <b>${Math.floor(secondi / 60)} min ${secondi % 60} s</b> · `}accuratezza <b>${acc}%</b><br>
+    ${aiuti.tempo || lim ? "" : `Tempo: <b>${Math.floor(secondi / 60)} min ${secondi % 60} s</b> · `}accuratezza <b>${acc}%</b><br>
     Errori di procedura ${e.procedura} · risposte rapide ${e.fretta} · lapsus ${e.lapsus} · errori di concetto ${e.concetto} · compensazioni svolte ${st.compensazioni}
     ${modo === "schermo" ? `<div style="margin-top:8px;font-weight:600">La tua analisi in colonna</div><div class="colonna" style="margin-left:0">${colonna().map(r => `<div>${r}</div>`).join("")}</div>` : ""}`);
 }
@@ -979,7 +1019,7 @@ function sbaglio(concetto, spiegazione, eVerifica) {
   st.ultimaAzione = Date.now();
   // tre errori di fila sulla stessa scelta: probabile "procedere per tentativi" (segnale per l'insegnante)
   if (++st.diFila === 3) registra("segnale", "procede per tentativi", c);
-  if (!aiuti.tempo && dt < SOGLIA_FRETTA) {   // con l'aiuto "Senza tempo" la rapidità non viene valutata
+  if (!aiuti.tempo && !lim && dt < SOGLIA_FRETTA) {   // con l'aiuto "Senza tempo" e sulla LIM la rapidità non viene valutata
     st.err.fretta++;
     apriFascia("avviso", "Risposta rapida", `<h3>Con calma</h3>Hai risposto in ${dt.toFixed(1)} secondi. Rileggi la frase e il passo della procedura prima di scegliere.
       <div class="bottoni"><button data-azione="chiudiFascia">Riprova</button></div>`);
@@ -1031,12 +1071,16 @@ function apriFascia(tipo, titolo, html) {
   f.className = "fascia aperta " + tipo;
   document.getElementById("fasciaTitolo").textContent = "Unità di Compensazione · " + titolo;
   document.getElementById("fasciaContenuto").innerHTML = html;
+  // sulla LIM la fascia può finire sotto il bordo dello schermo: la si porta in vista
+  if (lim && !inGuida) setTimeout(() => window.scrollTo({ top: document.documentElement.scrollHeight, behavior: "smooth" }), 50);
 }
 function chiudiFascia() {
   const f = document.getElementById("fascia");
+  const eraAperta = f.classList.contains("aperta");
   f.className = "fascia";
   document.getElementById("fasciaTitolo").textContent = "Unità di Compensazione · nessun avviso";
   document.getElementById("fasciaContenuto").innerHTML = "";
+  if (lim && eraAperta) window.scrollTo({ top: 0, behavior: "smooth" });
   if (st) { st.inizioPasso = Date.now(); st.ultimaAzione = Date.now(); }
 }
 
@@ -1062,7 +1106,7 @@ function pausa() {
   if (!st.inPausa) {
     st.inPausa = true; st.inizioPausa = Date.now();
     document.getElementById("btnPausa").textContent = "▶ Riprendi";
-    mostraCopertura("In pausa", "Il tempo è fermo. Quando sei pronto, riprendi.", "▶ RIPRENDI", "pausa");
+    mostraCopertura("In pausa", lim ? "Il tempo è fermo. Quando la classe è pronta, riprendete." : "Il tempo è fermo. Quando sei pronto, riprendi.", "▶ RIPRENDI", "pausa");
   } else {
     const d = Date.now() - st.inizioPausa; st.inPausa = false; st.msPausa += d; st.inizioPasso += d; st.ultimaAzione += d;
     document.getElementById("btnPausa").textContent = "⏸ Pausa";
@@ -1119,7 +1163,7 @@ function leggiOpzioni() {
   if (q.has("aiuti")) { const scelti = q.get("aiuti").split(","); Object.keys(aiuti).forEach(k => { aiuti[k] = scelti.includes(k); }); }
   if (PROFILI[q.get("profilo")]) profilo = q.get("profilo");
   // link per la classe: gli alunni non vedono le opzioni
-  if (q.get("classe") === "1") { document.getElementById("btnOpzioni").classList.add("nascosto"); document.querySelector("header .modo").classList.add("nascosto"); }
+  if (q.get("classe") === "1") { document.getElementById("btnOpzioni").classList.add("nascosto"); document.querySelector("header .modo").classList.add("nascosto"); document.getElementById("btnLim").classList.add("nascosto"); }
 }
 /* MODALITÀ INSEGNANTE: il link porta con sé grammatica, livello, modalità e aiuti */
 function linkClasse() {
@@ -1258,6 +1302,7 @@ document.addEventListener("click", e => {
     case "apriLeg": pannello("leg", false); break;
     case "apriPasso": el.classList.toggle("aperto"); break;
     case "modo": impostaModo(v); break;
+    case "lim": impostaLim(!lim); break;
     case "tour": tour(0); break;
     // con il link per la classe l'alunno riceve subito le indicazioni veloci
     case "aiuto-menu": if (inClasse) tour(0); else document.getElementById("menuAiuto").classList.toggle("nascosto"); break;
@@ -1287,6 +1332,7 @@ window.addEventListener("error", e => {
    ===================================================================== */
 const GUIDA = [
   { sel: "header .modo", pos: "prima", t: "Schermo / Quaderno", d: "Schermo: l'alunno lavora solo al computer (5 passi). Quaderno: fa prima l'analisi sul quaderno e la riporta qui; si aggiunge il passo «Riscrivi in colonna» (6 passi)." },
+  { sel: "#btnLim", t: "LIM", d: "Per la lezione con tutta la classe, alla lavagna interattiva: frase e comandi molto più grandi, da toccare con il dito; i punti dove mettere le barrette restano visibili; la rapidità delle risposte non viene valutata, perché la classe discute prima di scegliere. Le consegne parlano al plurale. Resta attiva anche quando si riapre la pagina, finché non si tocca di nuovo il bottone." },
   { sel: "#btnPrec", pos: "prima", t: "◀ Frase / Frase ▶", d: "Passano alla frase precedente o successiva. Le frasi disponibili dipendono dal livello scelto." },
   { sel: "#btnPausa", t: "Pausa", d: "Ferma il tempo e copre la frase. Ogni frase parte solo quando l'alunno preme INIZIA." },
   { sel: "[data-azione='scatola']", t: "Registro (scatola nera)", d: "Per l'insegnante: frasi completate, tempi, errori per tipo, concetti da riprendere, segnale «procede per tentativi». Si può stampare o scaricare per Excel. Vale per la sessione in corso." },
@@ -1357,8 +1403,11 @@ let modoSalvato = "schermo"; try { modoSalvato = localStorage.getItem("sim-modo"
 modoSalvato = new URLSearchParams(location.search).get("modo") || modoSalvato;
 impostaModo(modoSalvato);
 let primaVolta = true; try { primaVolta = localStorage.getItem("sim-tour") !== "1"; } catch (e) {}
+let limSalvato = false; try { limSalvato = localStorage.getItem("sim-lim") === "1"; } catch (e) {}
+const qLim = new URLSearchParams(location.search).get("lim");
+if (!inGuida) impostaLim(qLim ? qLim === "1" : limSalvato);
 if (inGuida) preparaGuida();
-else if (primaVolta) setTimeout(() => tour(0), 400);
+else if (primaVolta && !lim) setTimeout(() => tour(0), 400);
 </script>
 </body>
 </html>
