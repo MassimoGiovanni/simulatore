@@ -473,13 +473,18 @@ const inClasse = new URLSearchParams(location.search).get("classe") === "1";
 let livello = 1;
 /* MODALITÀ LIM: la classe lavora insieme sulla lavagna; caratteri grandi, rapidità non valutata, consegne al plurale */
 let lim = false;
+function etichettaFrase(i) { return (lim ? "Frase " : "Analisi logica · frase ") + (i + 1) + " di " + ATTIVE.length; }   // sulla LIM, più breve: l'intestazione resta su una riga
 function pronti() { return lim ? "Leggete la frase insieme: quando la classe è pronta, premete INIZIA." : "Quando sei pronto a concentrarti, premi INIZIA."; }
 function impostaLim(on) {
   lim = !!on;
   document.body.classList.toggle("lim", lim);
-  document.getElementById("btnLim").classList.toggle("attivo", lim);
+  const b = document.getElementById("btnLim");
+  b.classList.toggle("attivo", lim);
+  // lo stato si legge anche senza distinguere i colori
+  b.textContent = lim ? "🖥 LIM attiva – tocca per uscire" : "🖥 LIM";
   if (!inGuida) try { localStorage.setItem("sim-lim", lim ? "1" : "0"); } catch (e) {}
   if (st && !st.avviato) document.getElementById("copTesto").textContent = pronti();
+  if (F) document.getElementById("fraseN").textContent = etichettaFrase(iFrase);
 }
 const aiuti ={ divisione: false, guida: false, ridotte: false, tempo: false, lettura: false };
 function sigleDi(d) { return [...new Set(d.sigle.filter(inUso).map(canon))]; }
@@ -632,7 +637,7 @@ function carica(i) {
   iFrase = i; F = ATTIVE[i]; parole = F.testo.split(" "); st = nuovoStato();
   if (aiuti.divisione) st.barre = new Set(F.gruppi.slice(0, -1).map(g => g[g.length - 1]));
   if (window.speechSynthesis) speechSynthesis.cancel();
-  document.getElementById("fraseN").textContent = `Analisi logica · frase ${i + 1} di ${ATTIVE.length}`;
+  document.getElementById("fraseN").textContent = etichettaFrase(i);
   document.getElementById("btnPrec").disabled = i === 0;
   document.getElementById("btnSucc").disabled = i === ATTIVE.length - 1;
   document.getElementById("btnPausa").disabled = true;
@@ -1153,7 +1158,7 @@ function applicaOpzioni(ricarica) {
 }
 let passoPrima = "div";   // il passo in corso prima di un cambio di opzioni
 function testata() {
-  document.getElementById("fraseN").textContent = `Analisi logica · frase ${iFrase + 1} di ${ATTIVE.length}`;
+  document.getElementById("fraseN").textContent = etichettaFrase(iFrase);
   document.getElementById("btnPrec").disabled = iFrase === 0;
   document.getElementById("btnSucc").disabled = iFrase === ATTIVE.length - 1;
 }
